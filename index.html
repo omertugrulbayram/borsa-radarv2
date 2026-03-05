@@ -205,7 +205,7 @@ body {
 
 /* ── RIGHT PANEL ─────────────────────────────────── */
 .right-panel {
-  width:280px; background:var(--surface); border-left:1px solid var(--border);
+  width:300px; background:var(--surface); border-left:1px solid var(--border);
   display:flex; flex-direction:column; overflow:hidden; flex-shrink:0;
 }
 .rp-tabs { display:flex; border-bottom:1px solid var(--border); flex-shrink:0; }
@@ -356,20 +356,30 @@ body {
       <canvas id="priceChart" style="display:none"></canvas>
     </div>
 
-    <!-- Technical Indicators -->
-    <div class="indicators-row" id="indicatorsRow">
+    <!-- Technical Indicators Row 1 -->
+    <div class="indicators-row" id="indicatorsRow" style="grid-template-columns:repeat(5,1fr)">
       <div class="ind-card"><div class="ind-label">RSI(14)</div><div class="ind-val" id="ind-rsi">—</div><div class="ind-signal" id="ind-rsi-s">—</div></div>
       <div class="ind-card"><div class="ind-label">MACD</div><div class="ind-val" id="ind-macd">—</div><div class="ind-signal" id="ind-macd-s">—</div></div>
+      <div class="ind-card"><div class="ind-label">STOCH %K</div><div class="ind-val" id="ind-stoch">—</div><div class="ind-signal" id="ind-stoch-s">—</div></div>
+      <div class="ind-card"><div class="ind-label">WİLLİAMS %R</div><div class="ind-val" id="ind-willr">—</div><div class="ind-signal" id="ind-willr-s">—</div></div>
+      <div class="ind-card"><div class="ind-label">CCI(20)</div><div class="ind-val" id="ind-cci">—</div><div class="ind-signal" id="ind-cci-s">—</div></div>
+    </div>
+    <!-- Technical Indicators Row 2 -->
+    <div class="indicators-row" style="grid-template-columns:repeat(5,1fr);padding-top:4px">
       <div class="ind-card"><div class="ind-label">MA20</div><div class="ind-val" id="ind-ma20">—</div><div class="ind-signal" id="ind-ma20-s">—</div></div>
       <div class="ind-card"><div class="ind-label">MA50</div><div class="ind-val" id="ind-ma50">—</div><div class="ind-signal" id="ind-ma50-s">—</div></div>
+      <div class="ind-card"><div class="ind-label">MA200</div><div class="ind-val" id="ind-ma200">—</div><div class="ind-signal" id="ind-ma200-s">—</div></div>
+      <div class="ind-card"><div class="ind-label">ATR(14)</div><div class="ind-val" id="ind-atr">—</div><div class="ind-signal" id="ind-atr-s">—</div></div>
       <div class="ind-card"><div class="ind-label">BOLLINGER</div><div class="ind-val" id="ind-boll">—</div><div class="ind-signal" id="ind-boll-s">—</div></div>
     </div>
   </div>
 
-  <!-- RIGHT: AI + News -->
+  <!-- RIGHT: Tabs -->
   <div class="right-panel">
     <div class="rp-tabs">
-      <div class="rp-tab active" style="cursor:default;flex:1;text-align:center">📊 TEMEL ANALİZ</div>
+      <div class="rp-tab active" id="tab-teknik" onclick="switchRpTab('teknik')">📈 TEKNİK</div>
+      <div class="rp-tab" id="tab-temel" onclick="switchRpTab('temel')">📊 TEMEL</div>
+      <div class="rp-tab" id="tab-haberler" onclick="switchRpTab('haberler')">📰 HABERLER</div>
     </div>
     <div class="rp-content" id="rpContent">
       <div style="padding:30px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--muted)">Hisse seçin</div>
@@ -506,11 +516,16 @@ async function fetchStockHistory(code, tf) {
   try {
     const r = await fetchYahoo(code + '.IS', range, interval);
     if (!r) return null;
-    const ts = r.timestamp || [];
-    const closes = r.indicators?.quote?.[0]?.close || [];
+    const ts     = r.timestamp || [];
+    const q      = r.indicators?.quote?.[0] || {};
+    const closes = q.close  || [];
+    const highs  = q.high   || [];
+    const lows   = q.low    || [];
     return ts.map((t,i) => ({
-      date: new Date(t*1000).toLocaleDateString('tr-TR',{day:'2-digit',month:'2-digit',year:tf==='3Y'?'2-digit':undefined}),
+      date:  new Date(t*1000).toLocaleDateString('tr-TR',{day:'2-digit',month:'2-digit',year:tf==='3Y'?'2-digit':undefined}),
       close: closes[i],
+      high:  highs[i]  || closes[i],
+      low:   lows[i]   || closes[i],
     })).filter(d => d.close != null);
   } catch(e) { return null; }
 }
@@ -719,7 +734,11 @@ async function loadChart(code, tf) {
   });
 
   // Compute & show technical indicators
-  calcIndicators(prices);
+  const highs  = data.map(d => parseFloat(d.high  || d.close || d.price || 0)).filter(Boolean);
+  const lows   = data.map(d => parseFloat(d.low   || d.close || d.price || 0)).filter(Boolean);
+  const hAligned = highs.length === prices.length ? highs : prices;
+  const lAligned = lows.length  === prices.length ? lows  : prices;
+  calcIndicators(prices, hAligned, lAligned);
 }
 
 // ================================================================
@@ -772,153 +791,342 @@ function calcBollinger(prices, period=20) {
   return { upper: mid+2*std, lower: mid-2*std, mid };
 }
 
-function calcIndicators(prices) {
-  if (!prices.length) return;
+function calcStochastic(prices, highs, lows, kPeriod=14) {
+  if (prices.length < kPeriod) return null;
+  const sliceH = highs.slice(-kPeriod);
+  const sliceL = lows.slice(-kPeriod);
+  const highest = Math.max(...sliceH);
+  const lowest  = Math.min(...sliceL);
+  if (highest === lowest) return 50;
+  return 100 * (prices[prices.length-1] - lowest) / (highest - lowest);
+}
+
+function calcWilliamsR(prices, highs, lows, period=14) {
+  if (prices.length < period) return null;
+  const sliceH = highs.slice(-period);
+  const sliceL = lows.slice(-period);
+  const highest = Math.max(...sliceH);
+  const lowest  = Math.min(...sliceL);
+  if (highest === lowest) return -50;
+  return -100 * (highest - prices[prices.length-1]) / (highest - lowest);
+}
+
+function calcCCI(prices, highs, lows, period=20) {
+  if (prices.length < period) return null;
+  const tp = prices.map((c,i) => (c + (highs[i]||c) + (lows[i]||c)) / 3);
+  const sliceTp = tp.slice(-period);
+  const avg = sliceTp.reduce((a,b)=>a+b,0) / period;
+  const meanDev = sliceTp.reduce((a,b)=>a+Math.abs(b-avg),0) / period;
+  if (meanDev === 0) return 0;
+  return (tp[tp.length-1] - avg) / (0.015 * meanDev);
+}
+
+function calcATR(highs, lows, closes, period=14) {
+  if (closes.length < period+1) return null;
+  const trs = closes.map((c,i) => {
+    if (i===0) return highs[i]-lows[i];
+    return Math.max(highs[i]-lows[i], Math.abs(highs[i]-closes[i-1]), Math.abs(lows[i]-closes[i-1]));
+  });
+  return trs.slice(-period).reduce((a,b)=>a+b,0) / period;
+}
+
+function setInd(id, valTxt, cls, sigId, sigTxt, sigCls) {
+  const el = document.getElementById(id);
+  const sEl = document.getElementById(sigId);
+  if (el) { el.textContent = valTxt; el.className = 'ind-val ' + (cls||''); }
+  if (sEl) { sEl.textContent = sigTxt; sEl.className = 'ind-signal ' + (sigCls||'signal-neutral'); }
+}
+
+function calcIndicators(prices, highs, lows) {
+  if (!prices || !prices.length) return;
+  highs = highs || prices;
+  lows  = lows  || prices;
   const last = prices[prices.length-1];
 
   // RSI
   const rsi = calcRSI(prices);
-  const rsiEl = document.getElementById('ind-rsi');
-  const rsiSEl = document.getElementById('ind-rsi-s');
   if (rsi !== null) {
-    rsiEl.textContent = rsi.toFixed(1);
-    rsiEl.className = 'ind-val ' + (rsi>70?'down':rsi<30?'up':'');
-    if (rsi>70) { rsiSEl.textContent='AŞIRI ALIM'; rsiSEl.className='ind-signal signal-sell'; }
-    else if (rsi<30) { rsiSEl.textContent='AŞIRI SATIM'; rsiSEl.className='ind-signal signal-buy'; }
-    else { rsiSEl.textContent='NÖTR'; rsiSEl.className='ind-signal signal-neutral'; }
+    const rsiCol = rsi>70?'down':rsi<30?'up':'';
+    const rsiSig = rsi>70?['AŞIRI ALIM','signal-sell']:rsi<30?['AŞIRI SATIM','signal-buy']:['NÖTR','signal-neutral'];
+    setInd('ind-rsi', rsi.toFixed(1), rsiCol, 'ind-rsi-s', rsiSig[0], rsiSig[1]);
   }
 
   // MACD
   const macd = calcMACD(prices);
-  const macdEl = document.getElementById('ind-macd');
-  const macdSEl = document.getElementById('ind-macd-s');
-  macdEl.textContent = macd.toFixed(2);
-  macdEl.className = 'ind-val ' + (macd>0?'up':'down');
-  macdSEl.textContent = macd>0 ? 'YÜKSELİŞ' : 'DÜŞÜŞ';
-  macdSEl.className = 'ind-signal ' + (macd>0?'signal-buy':'signal-sell');
+  setInd('ind-macd', macd.toFixed(2), macd>0?'up':'down', 'ind-macd-s', macd>0?'YÜKSELİŞ':'DÜŞÜŞ', macd>0?'signal-buy':'signal-sell');
+
+  // Stochastic
+  const stoch = calcStochastic(prices, highs, lows);
+  if (stoch !== null) {
+    const stCol = stoch>80?'down':stoch<20?'up':'';
+    const stSig = stoch>80?['AŞIRI ALIM','signal-sell']:stoch<20?['AŞIRI SATIM','signal-buy']:['NÖTR','signal-neutral'];
+    setInd('ind-stoch', stoch.toFixed(1), stCol, 'ind-stoch-s', stSig[0], stSig[1]);
+  }
+
+  // Williams %R
+  const willr = calcWilliamsR(prices, highs, lows);
+  if (willr !== null) {
+    const wCol = willr>-20?'down':willr<-80?'up':'';
+    const wSig = willr>-20?['AŞIRI ALIM','signal-sell']:willr<-80?['AŞIRI SATIM','signal-buy']:['NÖTR','signal-neutral'];
+    setInd('ind-willr', willr.toFixed(1), wCol, 'ind-willr-s', wSig[0], wSig[1]);
+  }
+
+  // CCI
+  const cci = calcCCI(prices, highs, lows);
+  if (cci !== null) {
+    const cciCol = cci>100?'up':cci<-100?'down':'';
+    const cciSig = cci>100?['GÜÇLÜ','signal-buy']:cci<-100?['ZAYIF','signal-sell']:['NÖTR','signal-neutral'];
+    setInd('ind-cci', cci.toFixed(0), cciCol, 'ind-cci-s', cciSig[0], cciSig[1]);
+  }
 
   // MA20
-  const ma20arr = calcMA(prices, 20);
-  const ma20 = ma20arr.filter(Boolean).pop();
-  const ma20El = document.getElementById('ind-ma20');
-  const ma20SEl = document.getElementById('ind-ma20-s');
+  const ma20 = calcMA(prices,20).filter(Boolean).pop();
   if (ma20) {
-    ma20El.textContent = fmtNum(ma20);
-    const abv = last > ma20;
-    ma20El.className = 'ind-val ' + (abv?'up':'down');
-    ma20SEl.textContent = abv ? 'ÜSTÜNDE ↑' : 'ALTINDA ↓';
-    ma20SEl.className = 'ind-signal ' + (abv?'signal-buy':'signal-sell');
+    const abv = last>ma20;
+    setInd('ind-ma20', fmtNum(ma20), abv?'up':'down', 'ind-ma20-s', abv?'ÜSTÜNDE ↑':'ALTINDA ↓', abv?'signal-buy':'signal-sell');
   }
 
   // MA50
-  const ma50arr = calcMA(prices, 50);
-  const ma50 = ma50arr.filter(Boolean).pop();
-  const ma50El = document.getElementById('ind-ma50');
-  const ma50SEl = document.getElementById('ind-ma50-s');
+  const ma50 = calcMA(prices,50).filter(Boolean).pop();
   if (ma50) {
-    ma50El.textContent = fmtNum(ma50);
-    const abv = last > ma50;
-    ma50El.className = 'ind-val ' + (abv?'up':'down');
-    ma50SEl.textContent = abv ? 'ÜSTÜNDE ↑' : 'ALTINDA ↓';
-    ma50SEl.className = 'ind-signal ' + (abv?'signal-buy':'signal-sell');
+    const abv = last>ma50;
+    setInd('ind-ma50', fmtNum(ma50), abv?'up':'down', 'ind-ma50-s', abv?'ÜSTÜNDE ↑':'ALTINDA ↓', abv?'signal-buy':'signal-sell');
+  }
+
+  // MA200
+  const ma200 = calcMA(prices,200).filter(Boolean).pop();
+  if (ma200) {
+    const abv = last>ma200;
+    setInd('ind-ma200', fmtNum(ma200), abv?'up':'down', 'ind-ma200-s', abv?'ÜSTÜNDE ↑':'ALTINDA ↓', abv?'signal-buy':'signal-sell');
+  } else {
+    setInd('ind-ma200','YETERSİZ','','ind-ma200-s','VERİ','signal-neutral');
+  }
+
+  // ATR
+  const atr = calcATR(highs, lows, prices);
+  if (atr !== null) {
+    const atrPct = (atr/last*100).toFixed(1);
+    setInd('ind-atr', fmtNum(atr), '', 'ind-atr-s', `VOLATİLİTE %${atrPct}`, parseFloat(atrPct)>3?'signal-sell':'signal-neutral');
   }
 
   // Bollinger
   const boll = calcBollinger(prices);
-  const bollEl = document.getElementById('ind-boll');
-  const bollSEl = document.getElementById('ind-boll-s');
-  bollEl.textContent = fmtNum(boll.mid);
-  if (last > boll.upper) { bollSEl.textContent='ÜSTTE → SAT'; bollSEl.className='ind-signal signal-sell'; }
-  else if (last < boll.lower) { bollSEl.textContent='ALTTA → AL'; bollSEl.className='ind-signal signal-buy'; }
-  else { bollSEl.textContent='BANT İÇİ'; bollSEl.className='ind-signal signal-neutral'; }
+  const bollMid = fmtNum(boll.mid);
+  if (last > boll.upper) { setInd('ind-boll', bollMid, 'down', 'ind-boll-s', 'ÜSTTE → SAT', 'signal-sell'); }
+  else if (last < boll.lower) { setInd('ind-boll', bollMid, 'up', 'ind-boll-s', 'ALTTA → AL', 'signal-buy'); }
+  else { setInd('ind-boll', bollMid, '', 'ind-boll-s', 'BANT İÇİ', 'signal-neutral'); }
+
+  // Özet sinyal skoru → teknik sekmesini güncelle
+  lastIndicatorArgs = [prices, highs, lows, rsi, macd, stoch, willr, cci, ma20, ma50, ma200, boll, last, atr];
+  if (currentRpTab === 'teknik') updateTechnicalPanel(...lastIndicatorArgs);
+}
+
+function updateTechnicalPanel(prices, highs, lows, rsi, macd, stoch, willr, cci, ma20, ma50, ma200, boll, last, atr) {
+  if (currentRpTab !== 'teknik') return;
+  const el = document.getElementById('rpContent');
+
+  const signals = [];
+  if (rsi != null) signals.push(rsi<30?1:rsi>70?-1:0);
+  if (macd != null) signals.push(macd>0?1:-1);
+  if (stoch != null) signals.push(stoch<20?1:stoch>80?-1:0);
+  if (willr != null) signals.push(willr<-80?1:willr>-20?-1:0);
+  if (cci != null) signals.push(cci>100?1:cci<-100?-1:0);
+  if (ma20 != null) signals.push(last>ma20?1:-1);
+  if (ma50 != null) signals.push(last>ma50?1:-1);
+  if (ma200 != null) signals.push(last>ma200?1:-1);
+
+  const sum = signals.reduce((a,b)=>a+b,0);
+  const total = signals.length;
+  const buyCount  = signals.filter(s=>s===1).length;
+  const sellCount = signals.filter(s=>s===-1).length;
+  const neutCount = signals.filter(s=>s===0).length;
+  const score = total>0 ? Math.round((sum/total+1)/2*100) : 50;
+  const scoreCol = score>=60?'var(--up)':score<=40?'var(--down)':'var(--yellow)';
+  const signal = score>=70?'GÜÇLÜ AL':score>=55?'AL':score<=30?'GÜÇLÜ SAT':score<=45?'SAT':'NÖTR';
+  const sigCol = signal.includes('AL')?'var(--up)':signal.includes('SAT')?'var(--down)':'var(--yellow)';
+
+  const indRows = [
+    ['RSI(14)', rsi?.toFixed(1), rsi<30?'AL':rsi>70?'SAT':'NÖTR'],
+    ['MACD', macd?.toFixed(2), macd>0?'AL':'SAT'],
+    ['Stoch %K', stoch?.toFixed(1), stoch<20?'AL':stoch>80?'SAT':'NÖTR'],
+    ['Williams %R', willr?.toFixed(1), willr<-80?'AL':willr>-20?'SAT':'NÖTR'],
+    ['CCI(20)', cci?.toFixed(0), cci>100?'AL':cci<-100?'SAT':'NÖTR'],
+    ['MA20', ma20?fmtNum(ma20):null, ma20?(last>ma20?'AL':'SAT'):null],
+    ['MA50', ma50?fmtNum(ma50):null, ma50?(last>ma50?'AL':'SAT'):null],
+    ['MA200', ma200?fmtNum(ma200):null, ma200?(last>ma200?'AL':'SAT'):null],
+    ['Bollinger', fmtNum(boll?.mid), last>boll?.upper?'SAT':last<boll?.lower?'AL':'NÖTR'],
+    ['ATR(14)', atr?fmtNum(atr):null, atr?`%${(atr/last*100).toFixed(1)} vol`:null],
+  ].filter(r=>r[1]);
+
+  el.innerHTML = `<div style="padding:12px">
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:14px;margin-bottom:12px;text-align:center">
+      <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:2px;margin-bottom:8px">TEKNİK ÖZET</div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:16px">
+        <div style="font-family:var(--mono);font-size:40px;font-weight:600;color:${scoreCol}">${score}</div>
+        <div style="text-align:left">
+          <div style="font-size:14px;font-weight:600;color:${sigCol}">${signal}</div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:3px">${buyCount} AL · ${neutCount} NÖTR · ${sellCount} SAT</div>
+        </div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:var(--border);border:1px solid var(--border);border-radius:4px;overflow:hidden;margin-bottom:12px">
+      <div style="background:var(--bg2);padding:8px;text-align:center">
+        <div style="font-family:var(--mono);font-size:18px;font-weight:600;color:var(--up)">${buyCount}</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted)">AL</div>
+      </div>
+      <div style="background:var(--bg2);padding:8px;text-align:center">
+        <div style="font-family:var(--mono);font-size:18px;font-weight:600;color:var(--yellow)">${neutCount}</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted)">NÖTR</div>
+      </div>
+      <div style="background:var(--bg2);padding:8px;text-align:center">
+        <div style="font-family:var(--mono);font-size:18px;font-weight:600;color:var(--down)">${sellCount}</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted)">SAT</div>
+      </div>
+    </div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:2px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)">İNDİKATÖR DETAY</div>
+    ${indRows.map(([name,val,sig])=>{
+      const sCol = sig==='AL'?'var(--up)':sig?.startsWith('%')?'var(--muted)':sig==='SAT'?'var(--down)':'var(--yellow)';
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(30,30,46,0.4)">
+        <span style="font-family:var(--mono);font-size:9px;color:var(--muted)">${name}</span>
+        <div style="text-align:right">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--text)">${val}</span>
+          <span style="font-family:var(--mono);font-size:9px;color:${sCol};margin-left:6px">${sig||''}</span>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
 }
 
 // ================================================================
-// AI ANALİZ (Claude API)
+// RIGHT PANEL TABS
 // ================================================================
-// TEMEL ANALİZ (Yahoo Finance)
-// ================================================================
-let fundCache = {};
+let currentRpTab = 'teknik';
+let rpCache = {};  // { code: { fundamentals, news } }
+let lastIndicatorArgs = null; // to re-render teknik tab on switch
 
-async function loadFundamentals(code) {
-  const el = document.getElementById('rpContent');
-  el.innerHTML = `<div class="ai-loading"><div class="ai-spinner"></div><div>VERİ YÜKLENİYOR...</div></div>`;
-  if (fundCache[code]) { renderFund(fundCache[code], code); return; }
-  try {
-    const r = await fetch(`/api/fundamentals?ticker=${code}.IS`);
-    const d = await r.json();
-    if (d.error) throw new Error(d.error);
-    fundCache[code] = d;
-    renderFund(d, code);
-  } catch(e) {
-    el.innerHTML = `<div style="padding:20px;font-family:var(--mono);font-size:11px;color:var(--muted)">Veri yüklenemedi: ${e.message}</div>`;
+function switchRpTab(tab) {
+  currentRpTab = tab;
+  ['teknik','temel','haberler'].forEach(t => {
+    document.getElementById('tab-'+t).classList.toggle('active', t===tab);
+  });
+  if (!currentCode) return;
+  if (tab === 'teknik') {
+    if (lastIndicatorArgs) updateTechnicalPanel(...lastIndicatorArgs);
+    else document.getElementById('rpContent').innerHTML = '<div style="padding:20px;font-family:var(--mono);font-size:11px;color:var(--muted)">Grafik yükleyin</div>';
+  } else if (tab === 'temel') {
+    renderTemelTab();
+  } else if (tab === 'haberler') {
+    renderHaberlerTab();
   }
 }
 
-function renderFund(d, code) {
+function loadFundamentals(code) {
+  // Show teknik by default
+  currentRpTab = 'teknik';
+  ['teknik','temel','haberler'].forEach(t => {
+    document.getElementById('tab-'+t).classList.toggle('active', t==='teknik');
+  });
+  document.getElementById('rpContent').innerHTML = '<div style="padding:30px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--muted)">GRAFİK YÜKLENİYOR...</div>';
+  // Fetch fundamentals+news in background (cache)
+  if (!rpCache[code]) {
+    fetch(`/api/fundamentals?ticker=${code}.IS`)
+      .then(r=>r.json())
+      .then(d => { if (!d.error) rpCache[code] = d; })
+      .catch(()=>{});
+  }
+}
+
+function renderTemelTab() {
+  const el = document.getElementById('rpContent');
+  const cache = rpCache[currentCode];
+  if (!cache) {
+    el.innerHTML = `<div class="ai-loading"><div class="ai-spinner"></div><div>VERİ YÜKLENİYOR...</div></div>`;
+    // Try fetching
+    fetch(`/api/fundamentals?ticker=${currentCode}.IS`)
+      .then(r=>r.json())
+      .then(d => { if (!d.error) { rpCache[currentCode]=d; if(currentRpTab==='temel') renderTemelTab(); } })
+      .catch(e => el.innerHTML=`<div style="padding:20px;font-family:var(--mono);font-size:11px;color:var(--muted)">Yüklenemedi: ${e.message}</div>`);
+    return;
+  }
+  const d = cache.fundamentals || {};
   const row = (label, val, colorFn) => {
     if (val == null) return '';
     const col = colorFn ? colorFn(val) : 'var(--text)';
-    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(30,30,46,0.5)">
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(30,30,46,0.5)">
       <span style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px">${label}</span>
-      <span style="font-family:var(--mono);font-size:12px;font-weight:500;color:${col}">${val}</span>
+      <span style="font-family:var(--mono);font-size:11px;font-weight:500;color:${col}">${val}</span>
     </div>`;
   };
-  const fmtB = v => v == null ? null : v >= 1e9 ? (v/1e9).toFixed(2)+'Mr TL' : v >= 1e6 ? (v/1e6).toFixed(1)+'M TL' : v.toFixed(0)+' TL';
-  const recMap = { buy:'AL', hold:'TUT', sell:'SAT', strongbuy:'GÜÇLÜ AL', strongsell:'GÜÇLÜ SAT' };
-  const recCol = { buy:'var(--up)', hold:'var(--yellow)', sell:'var(--down)', strongbuy:'var(--up)', strongsell:'var(--down)' };
+  const fmtB = v => v==null?null:Math.abs(v)>=1e12?(v/1e12).toFixed(2)+'T TL':Math.abs(v)>=1e9?(v/1e9).toFixed(2)+'Mr TL':Math.abs(v)>=1e6?(v/1e6).toFixed(1)+'M TL':v.toFixed(0)+' TL';
+  const recMap = {buy:'AL',hold:'TUT',sell:'SAT',strongbuy:'GÜÇLÜ AL',strongsell:'GÜÇLÜ SAT'};
+  const recCol = {buy:'var(--up)',hold:'var(--yellow)',sell:'var(--down)',strongbuy:'var(--up)',strongsell:'var(--down)'};
+  const sec = (title) => `<div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:2px;margin:10px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border)">${title}</div>`;
 
-  document.getElementById('rpContent').innerHTML = `<div style="padding:10px 12px">
-
-    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:2px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)">DEĞERLEME</div>
-    ${row('F/K (Trailing)', d.pe != null ? d.pe+'x' : null, v => parseFloat(v)<10?'var(--up)':parseFloat(v)>25?'var(--down)':'var(--yellow)')}
-    ${row('F/K (Forward)', d.forwardPE != null ? d.forwardPE+'x' : null)}
-    ${row('PD/DD', d.pb != null ? d.pb+'x' : null, v => parseFloat(v)<1.5?'var(--up)':parseFloat(v)>3?'var(--down)':'var(--text)')}
-    ${row('F/S', d.ps != null ? d.ps+'x' : null)}
-    ${row('EPS', d.eps != null ? d.eps+' TL' : null)}
-    ${row('Forward EPS', d.forwardEps != null ? d.forwardEps+' TL' : null)}
-
-    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:2px;margin:10px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border)">KARLILIK</div>
-    ${row('ROE', d.roe != null ? '%'+d.roe : null, v => parseFloat(v)>20?'var(--up)':parseFloat(v)<5?'var(--down)':'var(--text)')}
-    ${row('ROA', d.roa != null ? '%'+d.roa : null, v => parseFloat(v)>10?'var(--up)':'var(--text)')}
-    ${row('Brüt Kar Marjı', d.grossMargin != null ? '%'+d.grossMargin : null, v => parseFloat(v)>30?'var(--up)':'var(--text)')}
-    ${row('Faaliyet Marjı', d.operMargin != null ? '%'+d.operMargin : null, v => parseFloat(v)>15?'var(--up)':parseFloat(v)<0?'var(--down)':'var(--text)')}
-    ${row('Net Kar Marjı', d.profitMargin != null ? '%'+d.profitMargin : null, v => parseFloat(v)>10?'var(--up)':parseFloat(v)<0?'var(--down)':'var(--text)')}
-
-    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:2px;margin:10px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border)">BÜYÜME</div>
-    ${row('Gelir Büyümesi', d.revenueGrowth != null ? '%'+d.revenueGrowth : null, v => parseFloat(v)>0?'var(--up)':'var(--down)')}
-    ${row('Kar Büyümesi', d.earningsGrowth != null ? '%'+d.earningsGrowth : null, v => parseFloat(v)>0?'var(--up)':'var(--down)')}
-
-    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:2px;margin:10px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border)">BİLANÇO SAĞLIĞI</div>
-    ${row('Borç/Özkaynak', d.debtToEquity != null ? d.debtToEquity+'x' : null, v => parseFloat(v)<1?'var(--up)':parseFloat(v)>3?'var(--down)':'var(--yellow)')}
-    ${row('Cari Oran', d.currentRatio != null ? d.currentRatio+'x' : null, v => parseFloat(v)>2?'var(--up)':parseFloat(v)<1?'var(--down)':'var(--yellow)')}
-    ${row('Hızlı Oran', d.quickRatio != null ? d.quickRatio+'x' : null)}
-    ${row('Nakit', fmtB(d.totalCash))}
-    ${row('Toplam Borç', fmtB(d.totalDebt))}
-    ${row('Serbest Nakit Akışı', fmtB(d.freeCashflow), v => v.includes('-')?'var(--down)':'var(--up)')}
-
-    ${d.dividendYield ? `
-    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:2px;margin:10px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border)">TEMETTÜ</div>
-    ${row('Temettü Verimi', '%'+d.dividendYield, v => parseFloat(v)>5?'var(--up)':'var(--text)')}
-    ${row('Temettü/Hisse', d.dividendRate != null ? d.dividendRate+' TL' : null)}
-    ${row('Dağıtım Oranı', d.payoutRatio != null ? '%'+d.payoutRatio : null)}
-    ` : ''}
-
-    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:2px;margin:10px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border)">ANALİST</div>
-    ${d.recommendation ? `<div style="padding:8px 0;border-bottom:1px solid rgba(30,30,46,0.5);display:flex;justify-content:space-between"><span style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px">TAVSİYE</span><span style="font-family:var(--mono);font-size:12px;font-weight:600;color:${recCol[d.recommendation]||'var(--text)'}">${recMap[d.recommendation]||d.recommendation.toUpperCase()} (${d.analystCount||'?'} analist)</span></div>` : ''}
-    ${row('Hedef Fiyat (Ort.)', d.targetPrice != null ? d.targetPrice+' TL' : null, v => 'var(--up)')}
-    ${row('Hedef Yüksek', d.targetHigh != null ? d.targetHigh+' TL' : null)}
-    ${row('Hedef Düşük', d.targetLow != null ? d.targetLow+' TL' : null)}
-
-    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:2px;margin:10px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border)">DİĞER</div>
-    ${row('Beta', d.beta)}
-    ${row('52H Yüksek', d.week52High != null ? d.week52High+' TL' : null)}
-    ${row('52H Düşük', d.week52Low != null ? d.week52Low+' TL' : null)}
-    ${row('Piyasa Değeri', fmtB(d.marketCap))}
-    ${d.sector ? `${row('Sektör', d.sector)}` : ''}
-    ${d.employees ? `${row('Çalışan', d.employees.toLocaleString('tr-TR'))}` : ''}
-
+  el.innerHTML = `<div style="padding:10px 12px">
+    ${sec('DEĞERLEME')}
+    ${row('F/K',       d.pe!=null?d.pe+'x':null,         v=>parseFloat(v)<10?'var(--up)':parseFloat(v)>25?'var(--down)':'var(--yellow)')}
+    ${row('F/K (Fwd)', d.forwardPE!=null?d.forwardPE+'x':null)}
+    ${row('PD/DD',     d.pb!=null?d.pb+'x':null,          v=>parseFloat(v)<1.5?'var(--up)':parseFloat(v)>3?'var(--down)':'var(--text)')}
+    ${row('F/S',       d.ps!=null?d.ps+'x':null)}
+    ${row('EPS',       d.eps!=null?d.eps+' TL':null)}
+    ${row('Fwd EPS',   d.forwardEps!=null?d.forwardEps+' TL':null)}
+    ${row('Piy.Değeri',fmtB(d.marketCap))}
+    ${sec('KARLILIK')}
+    ${row('ROE',           d.roe!=null?'%'+d.roe:null,           v=>parseFloat(v)>20?'var(--up)':parseFloat(v)<5?'var(--down)':'var(--text)')}
+    ${row('ROA',           d.roa!=null?'%'+d.roa:null,           v=>parseFloat(v)>10?'var(--up)':'var(--text)')}
+    ${row('Brüt Marj',    d.grossMargin!=null?'%'+d.grossMargin:null,  v=>parseFloat(v)>30?'var(--up)':'var(--text)')}
+    ${row('Faaliyet Marj',d.operMargin!=null?'%'+d.operMargin:null,   v=>parseFloat(v)>15?'var(--up)':parseFloat(v)<0?'var(--down)':'var(--text)')}
+    ${row('Net Kar Marj', d.profitMargin!=null?'%'+d.profitMargin:null,v=>parseFloat(v)>10?'var(--up)':parseFloat(v)<0?'var(--down)':'var(--text)')}
+    ${sec('GELİR TABLOSU')}
+    ${row('Toplam Gelir',  fmtB(d.totalRevenue))}
+    ${row('Net Kar',       fmtB(d.netIncome), v=>v.includes('-')?'var(--down)':'var(--up)')}
+    ${row('Faaliyet Karı', fmtB(d.operatingIncome), v=>v.includes('-')?'var(--down)':'var(--up)')}
+    ${row('Gelir Büy.',    d.revenueGrowth!=null?'%'+d.revenueGrowth:null, v=>parseFloat(v)>0?'var(--up)':'var(--down)')}
+    ${row('Kar Büy.',      d.earningsGrowth!=null?'%'+d.earningsGrowth:null,v=>parseFloat(v)>0?'var(--up)':'var(--down)')}
+    ${sec('BİLANÇO')}
+    ${row('Borç/Özk.',    d.debtToEquity!=null?d.debtToEquity+'x':null, v=>parseFloat(v)<1?'var(--up)':parseFloat(v)>3?'var(--down)':'var(--yellow)')}
+    ${row('Cari Oran',    d.currentRatio!=null?d.currentRatio+'x':null,  v=>parseFloat(v)>2?'var(--up)':parseFloat(v)<1?'var(--down)':'var(--yellow)')}
+    ${row('Hızlı Oran',   d.quickRatio!=null?d.quickRatio+'x':null)}
+    ${row('Nakit',        fmtB(d.totalCash))}
+    ${row('Toplam Borç',  fmtB(d.totalDebt))}
+    ${row('Serbest NCF',  fmtB(d.freeCashflow), v=>v.includes('-')?'var(--down)':'var(--up)')}
+    ${d.dividendYield ? sec('TEMETTÜ') + row('Temettü Verimi','%'+d.dividendYield,v=>parseFloat(v)>5?'var(--up)':'var(--text)') + row('Temettü/Hisse',d.dividendRate!=null?d.dividendRate+' TL':null) + row('Dağıtım Oranı',d.payoutRatio!=null?'%'+d.payoutRatio:null) : ''}
+    ${sec('ANALİST')}
+    ${d.recommendation?`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(30,30,46,0.5)"><span style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px">TAVSİYE</span><span style="font-family:var(--mono);font-size:11px;font-weight:600;color:${recCol[d.recommendation]||'var(--text)'}">${recMap[d.recommendation]||d.recommendation.toUpperCase()} (${d.analystCount||'?'})</span></div>`:''}
+    ${row('Hedef Fiyat',  d.targetPrice!=null?d.targetPrice+' TL':null, _=>'var(--up)')}
+    ${row('Hedef Max',    d.targetHigh!=null?d.targetHigh+' TL':null)}
+    ${row('Hedef Min',    d.targetLow!=null?d.targetLow+' TL':null)}
+    ${sec('DİĞER')}
+    ${row('Beta',         d.beta!=null?d.beta:null)}
+    ${row('52H Yüksek',   d.week52High!=null?d.week52High+' TL':null)}
+    ${row('52H Düşük',    d.week52Low!=null?d.week52Low+' TL':null)}
+    ${d.sector?row('Sektör',d.sector):''}
+    ${d.industry?row('Sektör Kolu',d.industry):''}
+    ${d.employees?row('Çalışan',d.employees.toLocaleString('tr-TR')):''}
   </div>`;
+}
+
+function renderHaberlerTab() {
+  const el = document.getElementById('rpContent');
+  const cache = rpCache[currentCode];
+  if (!cache) {
+    el.innerHTML = `<div class="ai-loading"><div class="ai-spinner"></div><div>HABERLER YÜKLENİYOR...</div></div>`;
+    fetch(`/api/fundamentals?ticker=${currentCode}.IS`)
+      .then(r=>r.json())
+      .then(d => { if (!d.error) { rpCache[currentCode]=d; if(currentRpTab==='haberler') renderHaberlerTab(); } })
+      .catch(e => el.innerHTML=`<div style="padding:20px;font-family:var(--mono);font-size:11px;color:var(--muted)">Yüklenemedi</div>`);
+    return;
+  }
+  const news = cache.news || [];
+  if (!news.length) {
+    el.innerHTML = `<div style="padding:20px;font-family:var(--mono);font-size:11px;color:var(--muted)">Haber bulunamadı</div>`;
+    return;
+  }
+  el.innerHTML = news.map(n => `
+    <div class="news-item" onclick="window.open('${n.link}','_blank')" style="cursor:pointer">
+      <div class="news-headline">${n.title}</div>
+      <div class="news-meta">${n.publisher} &nbsp;·&nbsp; ${n.time}</div>
+    </div>`).join('');
 }
 
 // ================================================================
