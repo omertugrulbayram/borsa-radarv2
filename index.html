@@ -1031,7 +1031,10 @@ function loadFundamentals(code) {
   if (!rpCache[code]) {
     fetch(`/api/fundamentals?ticker=${code}.IS`)
       .then(r=>r.json())
-      .then(d => { if (!d.error) rpCache[code] = d; })
+      .then(d => {
+        if (!rpCache[code]) rpCache[code] = {};
+        if (d.fundamentals) rpCache[code].fundamentals = d.fundamentals;
+      })
       .catch(()=>{});
   }
 }
@@ -1039,12 +1042,16 @@ function loadFundamentals(code) {
 function renderTemelTab() {
   const el = document.getElementById('rpContent');
   const cache = rpCache[currentCode];
-  if (!cache) {
+  if (!cache || !cache.fundamentals) {
     el.innerHTML = `<div class="ai-loading"><div class="ai-spinner"></div><div>VERİ YÜKLENİYOR...</div></div>`;
     // Try fetching
     fetch(`/api/fundamentals?ticker=${currentCode}.IS`)
       .then(r=>r.json())
-      .then(d => { if (!d.error) { rpCache[currentCode]=d; if(currentRpTab==='temel') renderTemelTab(); } })
+      .then(d => {
+        if (!rpCache[currentCode]) rpCache[currentCode] = {};
+        rpCache[currentCode].fundamentals = d.fundamentals || {};
+        if (currentRpTab==='temel') renderTemelTab();
+      })
       .catch(e => el.innerHTML=`<div style="padding:20px;font-family:var(--mono);font-size:11px;color:var(--muted)">Yüklenemedi: ${e.message}</div>`);
     return;
   }
@@ -1108,16 +1115,25 @@ function renderTemelTab() {
 
 function renderHaberlerTab() {
   const el = document.getElementById('rpContent');
-  const cache = rpCache[currentCode];
-  if (!cache) {
-    el.innerHTML = `<div class="ai-loading"><div class="ai-spinner"></div><div>HABERLER YÜKLENİYOR...</div></div>`;
-    fetch(`/api/fundamentals?ticker=${currentCode}.IS`)
-      .then(r=>r.json())
-      .then(d => { if (!d.error) { rpCache[currentCode]=d; if(currentRpTab==='haberler') renderHaberlerTab(); } })
-      .catch(e => el.innerHTML=`<div style="padding:20px;font-family:var(--mono);font-size:11px;color:var(--muted)">Yüklenemedi</div>`);
+  // Check cache
+  if (rpCache[currentCode]?.news) {
+    _renderNews(rpCache[currentCode].news);
     return;
   }
-  const news = cache.news || [];
+  el.innerHTML = `<div class="ai-loading"><div class="ai-spinner"></div><div>HABERLER YÜKLENİYOR...</div></div>`;
+  fetch(`/api/news?ticker=${currentCode}.IS`)
+    .then(r => r.json())
+    .then(d => {
+      const news = d.news || [];
+      if (!rpCache[currentCode]) rpCache[currentCode] = {};
+      rpCache[currentCode].news = news;
+      if (currentRpTab === 'haberler') _renderNews(news);
+    })
+    .catch(e => el.innerHTML=`<div style="padding:20px;font-family:var(--mono);font-size:11px;color:var(--muted)">Haberler yüklenemedi: ${e.message}</div>`);
+}
+
+function _renderNews(news) {
+  const el = document.getElementById('rpContent');
   if (!news.length) {
     el.innerHTML = `<div style="padding:20px;font-family:var(--mono);font-size:11px;color:var(--muted)">Haber bulunamadı</div>`;
     return;
