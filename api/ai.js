@@ -7,34 +7,55 @@ export default async function handler(req, res) {
 
   const { code, name, price, chg, type = 'analysis' } = req.body;
 
-  // ── HABERLER: KAP RSS + Claude sentiment ──────────────────
+  // ── HABERLER ──────────────────────────────────────────────
   if (type === 'news') {
     try {
-      const kapUrl = `https://www.kap.org.tr/tr/Bildirim/RSS/${code}`;
-      const r = await fetch(kapUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/rss+xml' }
+      // Bigpara hisse haberleri
+      const url = `https://bigpara.hurriyet.com.tr/api/v1/hisse/haberler/${code}`;
+      const r = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Referer': 'https://bigpara.hurriyet.com.tr',
+          'Accept': 'application/json',
+        }
       });
-      const xml = await r.text();
 
-      const items = [];
-      const itemRegex = /<item>([\s\S]*?)<\/item>/g;
-      let match;
-      while ((match = itemRegex.exec(xml)) !== null && items.length < 6) {
-        const item = match[1];
-        const title = (item.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/) ||
-                       item.match(/<title>(.*?)<\/title>/))?.[1] || '';
-        const pubDate = (item.match(/<pubDate>(.*?)<\/pubDate>/))?.[1] || '';
-        const link = (item.match(/<link>(.*?)<\/link>/))?.[1] || '';
-        if (title) items.push({ title: title.trim(), pubDate, link });
+      let items = [];
+
+      if (r.ok) {
+        const data = await r.json();
+        // Bigpara response formatı: data.data veya data array
+        const list = data?.data || data || [];
+        items = (Array.isArray(list) ? list : []).slice(0, 6).map(n => ({
+          title: n.title || n.baslik || n.BASLIK || '',
+          time: relTime(new Date(n.publishDate || n.tarih || n.TARIH || Date.now())),
+          link: n.url || n.link || `https://bigpara.hurriyet.com.tr/hisse/${code}/`
+        })).filter(n => n.title);
+      }
+
+      // Bigpara çalışmadıysa Mynet dene
+      if (!items.length) {
+        const r2 = await fetch(`https://finans.mynet.com/api/v2/news/list?symbol=${code}&limit=6`, {
+          headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
+        });
+        if (r2.ok) {
+          const d2 = await r2.json();
+          const list2 = d2?.data?.items || d2?.items || [];
+          items = list2.slice(0,6).map(n => ({
+            title: n.title || n.baslik || '',
+            time: relTime(new Date(n.date || n.publishedAt || Date.now())),
+            link: n.url || n.link || '#'
+          })).filter(n => n.title);
+        }
       }
 
       if (!items.length) {
         return res.status(200).json([{
-          headline: `${code} icin henuz KAP bildirimi yok`,
-          sentiment: 'NOTR',
-          time: 'Simdi',
-          source: 'KAP',
-          link: `https://www.kap.org.tr`
+          headline: `${code} için haber bulunamadı`,
+          sentiment: 'NÖTR',
+          time: 'Şimdi',
+          source: 'Bigpara',
+          link: `https://bigpara.hurriyet.com.tr/hisse/${code}/`
         }]);
       }
 
@@ -49,30 +70,29 @@ export default async function handler(req, res) {
         },
         body: JSON.stringify({
           model: 'claude-haiku-4-5-20251001',
-          max_tokens: 200,
+          max_tokens: 150,
           messages: [{
             role: 'user',
-            content: `${code} KAP bildirimleri icin sentiment: POZİTİF, NEGATİF veya NÖTR. Sadece JSON array:\n${titlesText}\n\nOrnek: ["POZİTİF","NÖTR"]`
+            content: `Bu ${code} haberleri için sentiment: POZİTİF, NEGATİF, NÖTR. Sadece JSON array, başka hiçbir şey:\n${titlesText}\nÖrnek: ["POZİTİF","NÖTR"]`
           }]
         })
       });
       const sd = await sr.json();
       let sentiments = [];
       try {
-        const st = sd.content?.[0]?.text?.replace(/```json|```/g,'').trim() || '[]';
-        sentiments = JSON.parse(st);
+        sentiments = JSON.parse(sd.content?.[0]?.text?.replace(/```json|```/g,'').trim() || '[]');
       } catch(e) {}
 
       return res.status(200).json(items.map((it, i) => ({
         headline: it.title,
         sentiment: sentiments[i] || 'NÖTR',
-        time: relTime(new Date(it.pubDate)),
-        source: 'KAP',
-        link: it.link || 'https://www.kap.org.tr'
+        time: it.time,
+        source: 'Bigpara',
+        link: it.link
       })));
 
     } catch(e) {
-      return res.status(500).json({ error: e.message });
+      return res.status(500).json([{ headline: `Haber yüklenemedi: ${e.message}`, sentiment: 'NÖTR', time: 'Şimdi', source: 'Hata', link: '#' }]);
     }
   }
 
@@ -105,12 +125,13 @@ Sadece JSON don, baska hicbir sey yazma:
 }
 
 function relTime(date) {
-  if (!date || isNaN(date)) return 'Bugun';
+  if (!date || isNaN(date)) return 'Bugün';
   const diff = Date.now() - date.getTime();
   const m = Math.floor(diff / 60000);
   const h = Math.floor(m / 60);
   const d = Math.floor(h / 24);
-  if (d > 0) return `${d} gun once`;
-  if (h > 0) return `${h} saat once`;
-  return `${m} dk once`;
+  if (d > 0) return `${d} gün önce`;
+  if (h > 0) return `${h} saat önce`;
+  if (m > 0) return `${m} dk önce`;
+  return 'Az önce';
 }
