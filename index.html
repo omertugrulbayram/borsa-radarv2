@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Borsa Radar — BIST Teknik Analiz</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg:      #050507;
+  --bg2:     #0a0a0f;
+  --surface: #0f0f17;
+  --surface2:#16161f;
+  --border:  #1e1e2e;
+  --border2: #2a2a3e;
+  --up:      #00d4aa;
+  --down:    #ff3d6b;
+  --yellow:  #f5c518;
+  --blue:    #4f8ef7;
+  --purple:  #a78bfa;
+  --text:    #e2e2f0;
+  --muted:   #5a5a7a;
+  --mono:    'IBM Plex Mono', monospace;
+  --sans:    'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html, body { height:100%; overflow:hidden; }
+body {
+  background:var(--bg); color:var(--text);
+  font-family:var(--sans); font-size:13px;
+  display:flex; flex-direction:column;
+}
+
+/* ── TOPBAR ─────────────────────────────────────── */
+.topbar {
+  display:flex; align-items:center; gap:0;
+  background:var(--surface); border-bottom:1px solid var(--border);
+  flex-shrink:0; height:44px; padding:0 16px;
+}
+.brand {
+  font-family:var(--mono); font-size:15px; font-weight:600;
+  letter-spacing:2px; color:#fff; margin-right:24px;
+  display:flex; align-items:center; gap:8px;
+}
+.brand-dot { width:8px; height:8px; background:var(--up); border-radius:50%; animation:blink 1.5s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+.market-pills { display:flex; gap:2px; flex:1; }
+.mpill {
+  padding:4px 12px; font-family:var(--mono); font-size:11px;
+  border-right:1px solid var(--border); cursor:default;
+  display:flex; gap:8px; align-items:center;
+}
+.mpill-name { color:var(--muted); }
+.mpill-val { color:#fff; font-weight:500; }
+.mpill-chg { font-size:10px; }
+.up { color:var(--up); } .down { color:var(--down); }
+
+.topbar-right { display:flex; align-items:center; gap:10px; margin-left:auto; }
+.clock { font-family:var(--mono); font-size:12px; color:var(--muted); }
+.market-status {
+  font-family:var(--mono); font-size:10px; letter-spacing:1px;
+  padding:3px 8px; border-radius:3px; font-weight:500;
+}
+.market-open  { background:rgba(0,212,170,0.15); color:var(--up); border:1px solid rgba(0,212,170,0.3); }
+.market-close { background:rgba(255,61,107,0.15); color:var(--down); border:1px solid rgba(255,61,107,0.3); }
+
+/* ── SEARCH BAR ─────────────────────────────────── */
+.searchbar {
+  display:flex; align-items:center; gap:8px;
+  padding:8px 16px; background:var(--bg2);
+  border-bottom:1px solid var(--border); flex-shrink:0;
+}
+.search-wrap { position:relative; flex:0 0 260px; }
+.search-input {
+  width:100%; background:var(--surface); border:1px solid var(--border2);
+  color:var(--text); padding:6px 10px 6px 30px;
+  border-radius:4px; font-family:var(--mono); font-size:12px; outline:none;
+  transition:border-color 0.15s;
+}
+.search-input:focus { border-color:var(--blue); }
+.search-input::placeholder { color:var(--muted); }
+.search-icon { position:absolute; left:9px; top:50%; transform:translateY(-50%); color:var(--muted); font-size:13px; }
+.search-dropdown {
+  position:absolute; top:calc(100% + 4px); left:0; right:0;
+  background:var(--surface2); border:1px solid var(--border2); border-radius:4px;
+  z-index:100; display:none; max-height:220px; overflow-y:auto;
+  box-shadow:0 8px 24px rgba(0,0,0,0.6);
+}
+.search-dropdown.open { display:block; }
+.sdrop-item {
+  padding:8px 12px; cursor:pointer; display:flex; justify-content:space-between;
+  font-family:var(--mono); font-size:11px; transition:background 0.1s;
+  border-bottom:1px solid rgba(30,30,46,0.5);
+}
+.sdrop-item:hover { background:rgba(79,142,247,0.1); }
+.sdrop-code { color:var(--blue); font-weight:600; }
+.sdrop-name { color:var(--muted); font-size:10px; }
+
+.watchlist-chips { display:flex; gap:6px; flex-wrap:wrap; }
+.chip {
+  background:var(--surface); border:1px solid var(--border2);
+  color:var(--text); padding:4px 10px; border-radius:3px;
+  font-family:var(--mono); font-size:11px; cursor:pointer;
+  transition:all 0.12s; display:flex; align-items:center; gap:6px;
+}
+.chip:hover { border-color:var(--blue); color:var(--blue); }
+.chip.active { background:rgba(79,142,247,0.15); border-color:var(--blue); color:var(--blue); }
+.chip-chg { font-size:10px; }
+.chip-x { color:var(--muted); font-size:12px; }
+.chip-x:hover { color:var(--down); }
+
+.add-btn {
+  background:transparent; border:1px dashed var(--border2); color:var(--muted);
+  padding:4px 10px; border-radius:3px; font-family:var(--mono); font-size:11px;
+  cursor:pointer; transition:all 0.12s;
+}
+.add-btn:hover { border-color:var(--blue); color:var(--blue); }
+
+/* ── MAIN LAYOUT ────────────────────────────────── */
+.main { display:flex; flex:1; overflow:hidden; }
+
+/* ── LEFT PANEL ─────────────────────────────────── */
+.left-panel {
+  width:220px; background:var(--surface); border-right:1px solid var(--border);
+  display:flex; flex-direction:column; overflow:hidden; flex-shrink:0;
+}
+.panel-title {
+  padding:8px 12px; font-family:var(--mono); font-size:9px;
+  letter-spacing:2px; color:var(--muted); border-bottom:1px solid var(--border);
+  text-transform:uppercase; flex-shrink:0;
+}
+.bist100-list { flex:1; overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+.bist100-list::-webkit-scrollbar { width:3px; }
+.bist100-list::-webkit-scrollbar-thumb { background:var(--border); }
+.stock-row {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:7px 12px; border-bottom:1px solid rgba(30,30,46,0.5);
+  cursor:pointer; transition:background 0.1s;
+}
+.stock-row:hover { background:rgba(79,142,247,0.07); }
+.stock-row.active { background:rgba(79,142,247,0.12); border-left:2px solid var(--blue); padding-left:10px; }
+.sr-left { display:flex; flex-direction:column; gap:1px; }
+.sr-code { font-family:var(--mono); font-size:12px; font-weight:600; color:#fff; }
+.sr-name { font-size:9px; color:var(--muted); }
+.sr-right { text-align:right; }
+.sr-price { font-family:var(--mono); font-size:12px; font-weight:500; }
+.sr-chg { font-family:var(--mono); font-size:10px; }
+
+/* ── CENTER ─────────────────────────────────────── */
+.center { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+
+/* Stock header */
+.stock-header {
+  padding:12px 16px; background:var(--bg2);
+  border-bottom:1px solid var(--border); flex-shrink:0;
+  display:flex; align-items:flex-start; justify-content:space-between; gap:16px;
+}
+.sh-main { display:flex; align-items:baseline; gap:12px; }
+.sh-code { font-family:var(--mono); font-size:22px; font-weight:600; color:#fff; }
+.sh-name { font-size:12px; color:var(--muted); }
+.sh-price { font-family:var(--mono); font-size:28px; font-weight:600; }
+.sh-chg { font-family:var(--mono); font-size:14px; padding:2px 8px; border-radius:3px; }
+.sh-chg.up { background:rgba(0,212,170,0.12); }
+.sh-chg.down { background:rgba(255,61,107,0.12); }
+.sh-stats { display:flex; gap:20px; margin-top:6px; }
+.sh-stat { display:flex; flex-direction:column; gap:1px; }
+.sh-stat-label { font-size:9px; color:var(--muted); letter-spacing:1px; text-transform:uppercase; font-family:var(--mono); }
+.sh-stat-val { font-family:var(--mono); font-size:12px; color:#fff; }
+
+/* Timeframe selector */
+.tf-bar {
+  display:flex; gap:2px; padding:8px 16px;
+  background:var(--bg2); border-bottom:1px solid var(--border); flex-shrink:0;
+}
+.tf-btn {
+  background:transparent; border:1px solid transparent; color:var(--muted);
+  padding:3px 10px; border-radius:3px; font-family:var(--mono); font-size:11px;
+  cursor:pointer; transition:all 0.12s;
+}
+.tf-btn:hover { color:var(--text); }
+.tf-btn.active { background:rgba(79,142,247,0.15); border-color:var(--blue); color:var(--blue); }
+
+/* Chart area */
+.chart-wrap { flex:1; padding:12px 16px; min-height:0; position:relative; }
+.chart-wrap canvas { border-radius:4px; }
+.chart-loading {
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  font-family:var(--mono); font-size:12px; color:var(--muted); letter-spacing:2px;
+}
+
+/* Technical indicators row */
+.indicators-row {
+  display:grid; grid-template-columns:repeat(5,1fr); gap:8px;
+  padding:10px 16px; border-top:1px solid var(--border); flex-shrink:0;
+}
+.ind-card {
+  background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:8px 10px;
+}
+.ind-label { font-family:var(--mono); font-size:9px; color:var(--muted); letter-spacing:1px; }
+.ind-val { font-family:var(--mono); font-size:15px; font-weight:500; margin-top:2px; }
+.ind-signal { font-size:9px; margin-top:2px; font-family:var(--mono); }
+.signal-buy { color:var(--up); } .signal-sell { color:var(--down); } .signal-neutral { color:var(--yellow); }
+
+/* ── RIGHT PANEL ─────────────────────────────────── */
+.right-panel {
+  width:280px; background:var(--surface); border-left:1px solid var(--border);
+  display:flex; flex-direction:column; overflow:hidden; flex-shrink:0;
+}
+.rp-tabs { display:flex; border-bottom:1px solid var(--border); flex-shrink:0; }
+.rp-tab {
+  flex:1; padding:9px; text-align:center; font-family:var(--mono); font-size:10px;
+  letter-spacing:1px; color:var(--muted); cursor:pointer; border-bottom:2px solid transparent;
+  transition:all 0.15s;
+}
+.rp-tab:hover { color:var(--text); }
+.rp-tab.active { color:var(--blue); border-bottom-color:var(--blue); }
+.rp-content { flex:1; overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+.rp-content::-webkit-scrollbar { width:3px; }
+.rp-content::-webkit-scrollbar-thumb { background:var(--border); }
+
+/* AI Analysis */
+.ai-panel { padding:12px; }
+.ai-score-card {
+  background:var(--bg2); border:1px solid var(--border); border-radius:6px;
+  padding:14px; margin-bottom:12px; text-align:center;
+}
+.ai-score-label { font-family:var(--mono); font-size:9px; color:var(--muted); letter-spacing:2px; margin-bottom:8px; }
+.ai-score-gauge { display:flex; align-items:center; justify-content:center; gap:16px; }
+.ai-score-num { font-family:var(--mono); font-size:36px; font-weight:600; }
+.ai-score-desc { text-align:left; }
+.ai-sentiment-label { font-size:13px; font-weight:600; margin-bottom:3px; }
+.ai-sentiment-sub { font-size:10px; color:var(--muted); }
+.ai-bars { margin-bottom:12px; }
+.ai-bar-row { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.ai-bar-label { font-family:var(--mono); font-size:10px; color:var(--muted); width:60px; flex-shrink:0; }
+.ai-bar-track { flex:1; height:4px; background:var(--border); border-radius:2px; overflow:hidden; }
+.ai-bar-fill { height:100%; border-radius:2px; transition:width 0.8s ease; }
+.ai-bar-val { font-family:var(--mono); font-size:10px; color:var(--text); width:30px; text-align:right; flex-shrink:0; }
+.ai-summary {
+  background:var(--bg2); border:1px solid var(--border); border-radius:5px;
+  padding:10px; font-size:11px; line-height:1.7; color:var(--text); margin-bottom:10px;
+}
+.ai-loading {
+  display:flex; flex-direction:column; align-items:center; gap:10px;
+  padding:30px; color:var(--muted); font-family:var(--mono); font-size:11px;
+}
+.ai-spinner {
+  width:24px; height:24px; border:2px solid var(--border);
+  border-top-color:var(--blue); border-radius:50%;
+  animation:spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* News panel */
+.news-item {
+  padding:10px 12px; border-bottom:1px solid rgba(30,30,46,0.5);
+  cursor:pointer; transition:background 0.1s;
+}
+.news-item:hover { background:rgba(79,142,247,0.05); }
+.news-sentiment { display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+.news-headline { font-size:11px; line-height:1.5; color:var(--text); }
+.news-meta { font-family:var(--mono); font-size:9px; color:var(--muted); margin-top:4px; }
+
+/* Loading overlay */
+.loading-overlay {
+  position:fixed; inset:0; background:var(--bg);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  z-index:9999; gap:14px;
+}
+.lo-title { font-family:var(--mono); font-size:20px; font-weight:600; letter-spacing:4px; color:#fff; }
+.lo-title span { color:var(--up); }
+.lo-bar { width:200px; height:2px; background:var(--border); border-radius:2px; overflow:hidden; }
+.lo-fill { height:100%; background:var(--up); animation:lofill 2s ease forwards; }
+@keyframes lofill { 0%{width:0} 100%{width:100%} }
+.lo-text { font-family:var(--mono); font-size:10px; color:var(--muted); letter-spacing:2px; animation:ft 0.6s infinite alternate; }
+@keyframes ft { from{opacity:0.3} to{opacity:1} }
+</style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loader">
+  <div class="lo-title">BORSA <span>RADAR</span></div>
+  <div class="lo-bar"><div class="lo-fill"></div></div>
+  <div class="lo-text" id="loText">BIST VERİSİ YÜKLENIYOR...</div>
+</div>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="brand"><div class="brand-dot"></div>BORSA RADAR</div>
+  <div class="market-pills" id="marketPills">
+    <div class="mpill"><span class="mpill-name">BIST100</span><span class="mpill-val" id="xu100">—</span><span class="mpill-chg" id="xu100c">—</span></div>
+    <div class="mpill"><span class="mpill-name">USD/TRY</span><span class="mpill-val" id="usdtry">—</span><span class="mpill-chg" id="usdtryc">—</span></div>
+    <div class="mpill"><span class="mpill-name">EUR/TRY</span><span class="mpill-val" id="eurtry">—</span><span class="mpill-chg" id="eurtryc">—</span></div>
+    <div class="mpill"><span class="mpill-name">ALTIN</span><span class="mpill-val" id="gold">—</span><span class="mpill-chg" id="goldc">—</span></div>
+  </div>
+  <div class="topbar-right">
+    <div class="clock" id="clock">--:--:--</div>
+    <div class="market-status" id="marketStatus">—</div>
+  </div>
+</div>
+
+<!-- SEARCH & WATCHLIST -->
+<div class="searchbar">
+  <div class="search-wrap">
+    <span class="search-icon">⌕</span>
+    <input class="search-input" id="searchInput" type="text" placeholder="Hisse ara... (THYAO, GARAN...)" autocomplete="off">
+    <div class="search-dropdown" id="searchDropdown"></div>
+  </div>
+  <div class="watchlist-chips" id="watchlistChips"></div>
+  <button class="add-btn" onclick="addCurrentToWatch()">+ İZLEME LİSTESİ</button>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+  <!-- LEFT: BIST100 list -->
+  <div class="left-panel">
+    <div class="panel-title">BIST 100 — CANLI</div>
+    <div class="bist100-list" id="bist100List"><div style="padding:20px;color:var(--muted);font-family:var(--mono);font-size:10px;text-align:center">VERİ YÜKLENİYOR...</div></div>
+  </div>
+
+  <!-- CENTER: Chart + indicators -->
+  <div class="center">
+    <!-- Stock header -->
+    <div class="stock-header" id="stockHeader">
+      <div>
+        <div class="sh-main">
+          <span class="sh-code" id="shCode">—</span>
+          <span class="sh-name" id="shName">Hisse seçin</span>
+        </div>
+        <div class="sh-stats" id="shStats"></div>
+      </div>
+      <div style="text-align:right">
+        <div style="display:flex;align-items:center;gap:10px;justify-content:flex-end">
+          <div class="sh-price up" id="shPrice">—</div>
+          <div class="sh-chg up" id="shChg">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Timeframe -->
+    <div class="tf-bar">
+      <span style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-right:8px">DÖNEM:</span>
+      <button class="tf-btn active" data-tf="1G" onclick="setTF(this,'1G')">1G</button>
+      <button class="tf-btn" data-tf="1H" onclick="setTF(this,'1H')">1H</button>
+      <button class="tf-btn" data-tf="1A" onclick="setTF(this,'1A')">1A</button>
+      <button class="tf-btn" data-tf="3A" onclick="setTF(this,'3A')">3A</button>
+      <button class="tf-btn" data-tf="1Y" onclick="setTF(this,'1Y')">1Y</button>
+      <button class="tf-btn" data-tf="3Y" onclick="setTF(this,'3Y')">3Y</button>
+    </div>
+
+    <!-- Chart -->
+    <div class="chart-wrap" id="chartWrap">
+      <div class="chart-loading" id="chartLoading">HİSSE SEÇİN</div>
+      <canvas id="priceChart" style="display:none"></canvas>
+    </div>
+
+    <!-- Technical Indicators -->
+    <div class="indicators-row" id="indicatorsRow">
+      <div class="ind-card"><div class="ind-label">RSI(14)</div><div class="ind-val" id="ind-rsi">—</div><div class="ind-signal" id="ind-rsi-s">—</div></div>
+      <div class="ind-card"><div class="ind-label">MACD</div><div class="ind-val" id="ind-macd">—</div><div class="ind-signal" id="ind-macd-s">—</div></div>
+      <div class="ind-card"><div class="ind-label">MA20</div><div class="ind-val" id="ind-ma20">—</div><div class="ind-signal" id="ind-ma20-s">—</div></div>
+      <div class="ind-card"><div class="ind-label">MA50</div><div class="ind-val" id="ind-ma50">—</div><div class="ind-signal" id="ind-ma50-s">—</div></div>
+      <div class="ind-card"><div class="ind-label">BOLLINGER</div><div class="ind-val" id="ind-boll">—</div><div class="ind-signal" id="ind-boll-s">—</div></div>
+    </div>
+  </div>
+
+  <!-- RIGHT: AI + News -->
+  <div class="right-panel">
+    <div class="rp-tabs">
+      <div class="rp-tab active" id="tab-ai" onclick="switchTab('ai')">🤖 AI ANALİZ</div>
+      <div class="rp-tab" id="tab-news" onclick="switchTab('news')">📰 HABERLER</div>
+    </div>
+    <div class="rp-content" id="rpContent">
+      <div class="ai-panel">
+        <div style="padding:30px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--muted)">Hisse seçin → AI analizi başlasın</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ================================================================
+// BIST100 HİSSELERİ (kod + isim)
+// ================================================================
+const BIST100 = [
+  ['THYAO','Türk Hava Yolları'],['GARAN','Garanti BBVA'],['AKBNK','Akbank'],
+  ['EREGL','Ereğli Demir Çelik'],['BIMAS','BİM Mağazaları'],['KCHOL','Koç Holding'],
+  ['SISE','Şişe Cam'],['YKBNK','Yapı Kredi'],['TOASO','Tofaş Otomobil'],
+  ['TUPRS','Tüpraş'],['FROTO','Ford Otosan'],['SAHOL','Sabancı Holding'],
+  ['ASELS','Aselsan'],['PETKM','Petkim'],['TCELL','Turkcell'],
+  ['ARCLK','Arçelik'],['DOHOL','Doğan Holding'],['EKGYO','Emlak Konut'],
+  ['ENKAI','Enka İnşaat'],['HALKB','Halkbank'],['ISYHO','İş GYO'],
+  ['KRDMD','Kardemir'],['KOZAL','Koza Altın'],['MGROS','Migros'],
+  ['NETAS','Netaş Telekomünikasyon'],['OTKAR','Otokar'],['PGSUS','Pegasus'],
+  ['SASA','Sasa Polyester'],['TAVHL','TAV Havalimanları'],['TTKOM','Turk Telekom'],
+  ['VAKBN','VakıfBank'],['VESTL','Vestel'],['ZOREN','Zorlu Enerji'],
+  ['AEFES','Anadolu Efes'],['ALARK','Alarko Holding'],['ANACM','Anadolu Cam'],
+  ['BRSAN','Borusan Mannesmann'],['CIMSA','Çimsa'],['DOAS','Doğuş Otomotiv'],
+  ['EGEEN','Ege Endüstri'],['GESAN','Gensa Enerji'],['GUBRF','Gübre Fabrikaları'],
+  ['HEKTS','Hektaş'],['IPEKE','İpek Doğal Enerji'],['ISCTR','İş Bankası C'],
+  ['ISGYO','İş GYO'],['KARSN','Karsan'],['KLNMA','Kalkınma Yatırım'],
+  ['LOGO','Logo Yazılım'],['MAVI','Mavi Giyim'],['MPARK','MLP Sağlık'],
+  ['NTHOL','Net Holding'],['ODAS','Odaş Elektrik'],['OYAKC','Oyak Çimento'],
+  ['POLHO','Polisan Holding'],['QUAGR','Qua Granite'],['RHEAG','Rheinhütte'],
+  ['RYGYO','Reysaş GYO'],['SGSGD','Sogdiana'],['SMGE','Sümergaz'],
+  ['SOKM','Şok Marketler'],['TATGD','Tat Gıda'],['TKFEN','Tekfen Holding'],
+  ['TMSN','Tamsan'],['TRGYO','Torunlar GYO'],['TRKCM','Trakya Cam'],
+  ['TTRAK','Türk Traktör'],['ULKER','Ülker Bisküvi'],['VKGYO','Vakıf GYO'],
+];
+
+// ================================================================
+// STATE
+// ================================================================
+let currentCode = null, currentTF = '1G', currentTab = 'ai';
+let priceChart = null;
+let watchlist = JSON.parse(localStorage.getItem('br_watchlist') || '["THYAO","GARAN","AKBNK","BIMAS","ASELS"]');
+let stockCache = {};
+let aiCache = {};
+
+// ================================================================
+// CLOCK + MARKET STATUS
+// ================================================================
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent = now.toLocaleTimeString('tr-TR');
+  const h = now.getHours(), m = now.getMinutes(), day = now.getDay();
+  const isWeekday = day >= 1 && day <= 5;
+  const isOpen = isWeekday && (h > 9 || (h === 9 && m >= 55)) && h < 18;
+  const el = document.getElementById('marketStatus');
+  el.textContent = isOpen ? '● BORSA AÇIK' : '● BORSA KAPALI';
+  el.className = 'market-status ' + (isOpen ? 'market-open' : 'market-close');
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ================================================================
+// FETCH — Vercel Serverless API (CORS-free)
+// ================================================================
+const API_BASE = '/api';
+
+async function fetchYahoo(ticker, range='1d', interval='5m') {
+  try {
+    const res = await fetch(`${API_BASE}/finance?ticker=${encodeURIComponent(ticker)}&range=${range}&interval=${interval}`);
+    const data = await res.json();
+    return data?.chart?.result?.[0] || null;
+  } catch(e) { return null; }
+}
+
+async function fetchAllStocks() {
+  // Fetch BIST100 index + key stocks in parallel
+  const tickers = ['XU100.IS','USDTRY=X','EURTRY=X','GC=F'];
+  const results = await Promise.allSettled(tickers.map(t => fetchYahoo(t,'1d','1m')));
+
+  results.forEach((r,i) => {
+    if (r.status !== 'fulfilled' || !r.value) return;
+    const q = r.value.meta;
+    const key = ['XU100','USDTRY','EURTRY','GOLD'][i];
+    stockCache[key] = {
+      last: q.regularMarketPrice,
+      close: q.previousClose,
+      change_rate: ((q.regularMarketPrice - q.previousClose) / q.previousClose * 100),
+    };
+  });
+
+  // Fetch each BIST100 stock (batch — fetch top 20 in parallel first for speed)
+  const top20 = BIST100.slice(0,20).map(([c]) => c);
+  await fetchBatch(top20);
+  renderBist100List();
+  renderWatchlist();
+  updateMarketPills();
+
+  // Then fetch the rest quietly
+  const rest = BIST100.slice(20).map(([c]) => c);
+  fetchBatch(rest).then(() => { renderBist100List(); renderWatchlist(); });
+}
+
+async function fetchBatch(codes) {
+  await Promise.allSettled(codes.map(async code => {
+    try {
+      const r = await fetchYahoo(code + '.IS', '1d', '1m');
+      if (!r) return;
+      const m = r.meta;
+      stockCache[code] = {
+        last: m.regularMarketPrice,
+        open: m.regularMarketOpen,
+        high: m.regularMarketDayHigh,
+        low: m.regularMarketDayLow,
+        close: m.previousClose,
+        volume: m.regularMarketVolume,
+        change_rate: ((m.regularMarketPrice - m.previousClose) / m.previousClose * 100),
+      };
+    } catch(e) {}
+  }));
+}
+
+async function fetchStockHistory(code, tf) {
+  // Map our TF codes to Yahoo range/interval
+  const map = {
+    '1G': ['1d','5m'],
+    '1H': ['5d','60m'],
+    '1A': ['1mo','1d'],
+    '3A': ['3mo','1d'],
+    '1Y': ['1y','1wk'],
+    '3Y': ['3y','1mo'],
+  };
+  const [range, interval] = map[tf] || ['1mo','1d'];
+  try {
+    const r = await fetchYahoo(code + '.IS', range, interval);
+    if (!r) return null;
+    const ts = r.timestamp || [];
+    const closes = r.indicators?.quote?.[0]?.close || [];
+    return ts.map((t,i) => ({
+      date: new Date(t*1000).toLocaleDateString('tr-TR',{day:'2-digit',month:'2-digit',year:tf==='3Y'?'2-digit':undefined}),
+      close: closes[i],
+    })).filter(d => d.close != null);
+  } catch(e) { return null; }
+}
+
+function updateMarketPills() {
+  const pairs = [
+    { id:'xu100', cid:'xu100c', key:'XU100', dec:0 },
+    { id:'usdtry', cid:'usdtryc', key:'USDTRY', dec:3 },
+    { id:'eurtry', cid:'eurtryc', key:'EURTRY', dec:3 },
+    { id:'gold',   cid:'goldc',   key:'GOLD',   dec:0 },
+  ];
+  pairs.forEach(({ id, cid, key, dec }) => {
+    const s = stockCache[key];
+    if (!s) return;
+    document.getElementById(id).textContent = fmtNum(s.last, dec);
+    const chg = s.change_rate || 0;
+    const el = document.getElementById(cid);
+    el.textContent = (chg>=0?'+':'') + chg.toFixed(2) + '%';
+    el.className = 'mpill-chg ' + (chg>=0?'up':'down');
+  });
+}
+
+// ================================================================
+// RENDER BIST100 LIST
+// ================================================================
+function renderBist100List() {
+  const list = document.getElementById('bist100List');
+  list.innerHTML = '';
+  BIST100.forEach(([code, name]) => {
+    const s = stockCache[code];
+    const price = s ? (s.last || s.close || 0) : 0;
+    const chg = s ? (s.change_rate || s.changeRate || 0) : 0;
+    const isUp = chg >= 0;
+    const div = document.createElement('div');
+    div.className = 'stock-row' + (code === currentCode ? ' active' : '');
+    div.dataset.code = code;
+    div.innerHTML = `
+      <div class="sr-left">
+        <div class="sr-code">${code}</div>
+        <div class="sr-name">${name.substring(0,18)}</div>
+      </div>
+      <div class="sr-right">
+        <div class="sr-price ${isUp?'up':'down'}">${price ? fmtNum(price) : '—'}</div>
+        <div class="sr-chg ${isUp?'up':'down'}">${chg ? (chg>=0?'+':'')+chg.toFixed(2)+'%' : '—'}</div>
+      </div>`;
+    div.onclick = () => selectStock(code, name);
+    list.appendChild(div);
+  });
+}
+
+// ================================================================
+// WATCHLIST
+// ================================================================
+function renderWatchlist() {
+  const chips = document.getElementById('watchlistChips');
+  chips.innerHTML = '';
+  watchlist.forEach(code => {
+    const s = stockCache[code];
+    const chg = s ? (s.change_rate || s.changeRate || 0) : null;
+    const isUp = chg === null ? true : chg >= 0;
+    const div = document.createElement('div');
+    div.className = 'chip' + (code === currentCode ? ' active' : '');
+    div.dataset.code = code;
+    div.innerHTML = `
+      <span onclick="selectStock('${code}','${findName(code)}')">${code}</span>
+      ${chg !== null ? `<span class="chip-chg ${isUp?'up':'down'}">${(chg>=0?'+':'')+chg.toFixed(1)}%</span>` : ''}
+      <span class="chip-x" onclick="removeWatch('${code}')">×</span>`;
+    chips.appendChild(div);
+  });
+  localStorage.setItem('br_watchlist', JSON.stringify(watchlist));
+}
+
+function addCurrentToWatch() {
+  if (!currentCode || watchlist.includes(currentCode)) return;
+  watchlist.push(currentCode);
+  renderWatchlist();
+}
+
+function removeWatch(code) {
+  watchlist = watchlist.filter(c => c !== code);
+  renderWatchlist();
+}
+
+function findName(code) {
+  return (BIST100.find(([c]) => c === code) || [code, code])[1];
+}
+
+// ================================================================
+// SELECT STOCK
+// ================================================================
+async function selectStock(code, name) {
+  currentCode = code;
+  // Update active states
+  document.querySelectorAll('.stock-row').forEach(r => r.classList.toggle('active', r.dataset.code === code));
+  document.querySelectorAll('.chip').forEach(c => c.classList.toggle('active', c.dataset.code === code));
+
+  const s = stockCache[code] || {};
+  const price = s.last || s.close || 0;
+  const chg   = s.change_rate || s.changeRate || 0;
+  const isUp  = chg >= 0;
+
+  document.getElementById('shCode').textContent = code;
+  document.getElementById('shName').textContent = name;
+  const priceEl = document.getElementById('shPrice');
+  priceEl.textContent = price ? fmtNum(price) : '—';
+  priceEl.className = 'sh-price ' + (isUp ? 'up' : 'down');
+  const chgEl = document.getElementById('shChg');
+  chgEl.textContent = chg ? (chg>=0?'+':'')+chg.toFixed(2)+'%' : '—';
+  chgEl.className = 'sh-chg ' + (isUp ? 'up' : 'down');
+
+  document.getElementById('shStats').innerHTML = `
+    <div class="sh-stat"><div class="sh-stat-label">AÇILIŞ</div><div class="sh-stat-val">${fmtNum(s.open||0)}</div></div>
+    <div class="sh-stat"><div class="sh-stat-label">YÜKSEK</div><div class="sh-stat-val up">${fmtNum(s.high||0)}</div></div>
+    <div class="sh-stat"><div class="sh-stat-label">DÜŞÜK</div><div class="sh-stat-val down">${fmtNum(s.low||0)}</div></div>
+    <div class="sh-stat"><div class="sh-stat-label">HACİM</div><div class="sh-stat-val">${fmtVol(s.volume||0)}</div></div>
+    <div class="sh-stat"><div class="sh-stat-label">ÖNC.KPNS</div><div class="sh-stat-val">${fmtNum(s.close||0)}</div></div>
+  `;
+
+  await loadChart(code, currentTF);
+  loadAI(code, name, s);
+}
+
+// ================================================================
+// CHART
+// ================================================================
+async function loadChart(code, tf) {
+  document.getElementById('chartLoading').style.display = 'flex';
+  document.getElementById('chartLoading').textContent = 'GRAFİK YÜKLENİYOR...';
+  document.getElementById('priceChart').style.display = 'none';
+
+  const data = await fetchStockHistory(code, tf);
+  if (!data || !data.length) {
+    document.getElementById('chartLoading').textContent = 'VERİ YOK';
+    return;
+  }
+
+  const prices = data.map(d => parseFloat(d.close || d.price || d.value || 0)).filter(Boolean);
+  const labels = data.map(d => d.date || d.time || '');
+  const ma20 = calcMA(prices, 20);
+  const ma50 = calcMA(prices, 50);
+
+  const isUp = prices[prices.length-1] >= prices[0];
+  const lineColor = isUp ? '#00d4aa' : '#ff3d6b';
+  const fillColor = isUp ? 'rgba(0,212,170,0.06)' : 'rgba(255,61,107,0.06)';
+
+  document.getElementById('chartLoading').style.display = 'none';
+  document.getElementById('priceChart').style.display = 'block';
+
+  if (priceChart) priceChart.destroy();
+  const ctx = document.getElementById('priceChart').getContext('2d');
+
+  priceChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: code,
+          data: prices,
+          borderColor: lineColor,
+          backgroundColor: fillColor,
+          fill: true, tension: 0.3,
+          pointRadius: 0, pointHoverRadius: 4,
+          borderWidth: 1.5,
+        },
+        {
+          label: 'MA20',
+          data: ma20,
+          borderColor: 'rgba(245,197,24,0.7)',
+          borderWidth: 1, pointRadius: 0, fill: false, tension: 0.3,
+          borderDash: [],
+        },
+        {
+          label: 'MA50',
+          data: ma50,
+          borderColor: 'rgba(167,139,250,0.7)',
+          borderWidth: 1, pointRadius: 0, fill: false, tension: 0.3,
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode:'index', intersect:false },
+      plugins: {
+        legend: { display:true, labels:{ color:'#5a5a7a', font:{family:'IBM Plex Mono',size:10}, boxWidth:20, padding:12 } },
+        tooltip: {
+          backgroundColor:'#0f0f17', borderColor:'#1e1e2e', borderWidth:1,
+          titleColor:'#e2e2f0', bodyColor:'#e2e2f0',
+          titleFont:{family:'IBM Plex Mono',size:11}, bodyFont:{family:'IBM Plex Mono',size:11},
+          padding:10, cornerRadius:4,
+          callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fmtNum(ctx.raw)}` }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color:'#5a5a7a', font:{family:'IBM Plex Mono',size:9}, maxTicksLimit:8, maxRotation:0 },
+          grid: { color:'rgba(30,30,46,0.8)' }
+        },
+        y: {
+          position:'right',
+          ticks: { color:'#5a5a7a', font:{family:'IBM Plex Mono',size:9} },
+          grid: { color:'rgba(30,30,46,0.8)' }
+        }
+      }
+    }
+  });
+
+  // Compute & show technical indicators
+  calcIndicators(prices);
+}
+
+// ================================================================
+// TECHNICAL INDICATORS
+// ================================================================
+function calcMA(prices, period) {
+  return prices.map((_, i) => {
+    if (i < period - 1) return null;
+    const slice = prices.slice(i - period + 1, i + 1);
+    return slice.reduce((a,b)=>a+b,0) / period;
+  });
+}
+
+function calcRSI(prices, period=14) {
+  if (prices.length < period + 1) return null;
+  let gains=0, losses=0;
+  for (let i=1; i<=period; i++) {
+    const diff = prices[i] - prices[i-1];
+    if (diff>0) gains+=diff; else losses+=Math.abs(diff);
+  }
+  let avgGain=gains/period, avgLoss=losses/period;
+  for (let i=period+1; i<prices.length; i++) {
+    const diff = prices[i]-prices[i-1];
+    avgGain = (avgGain*(period-1) + Math.max(diff,0)) / period;
+    avgLoss = (avgLoss*(period-1) + Math.max(-diff,0)) / period;
+  }
+  if (avgLoss===0) return 100;
+  return 100 - 100/(1 + avgGain/avgLoss);
+}
+
+function calcMACD(prices) {
+  const ema12 = calcEMA(prices, 12);
+  const ema26 = calcEMA(prices, 26);
+  const macdLine = ema12 - ema26;
+  return macdLine;
+}
+
+function calcEMA(prices, period) {
+  const k = 2/(period+1);
+  let ema = prices.slice(0,period).reduce((a,b)=>a+b,0)/period;
+  for (let i=period; i<prices.length; i++) ema = prices[i]*k + ema*(1-k);
+  return ema;
+}
+
+function calcBollinger(prices, period=20) {
+  if (prices.length < period) return { upper:0, lower:0, mid:0 };
+  const slice = prices.slice(-period);
+  const mid = slice.reduce((a,b)=>a+b,0)/period;
+  const std = Math.sqrt(slice.reduce((a,b)=>a+Math.pow(b-mid,2),0)/period);
+  return { upper: mid+2*std, lower: mid-2*std, mid };
+}
+
+function calcIndicators(prices) {
+  if (!prices.length) return;
+  const last = prices[prices.length-1];
+
+  // RSI
+  const rsi = calcRSI(prices);
+  const rsiEl = document.getElementById('ind-rsi');
+  const rsiSEl = document.getElementById('ind-rsi-s');
+  if (rsi !== null) {
+    rsiEl.textContent = rsi.toFixed(1);
+    rsiEl.className = 'ind-val ' + (rsi>70?'down':rsi<30?'up':'');
+    if (rsi>70) { rsiSEl.textContent='AŞIRI ALIM'; rsiSEl.className='ind-signal signal-sell'; }
+    else if (rsi<30) { rsiSEl.textContent='AŞIRI SATIM'; rsiSEl.className='ind-signal signal-buy'; }
+    else { rsiSEl.textContent='NÖTR'; rsiSEl.className='ind-signal signal-neutral'; }
+  }
+
+  // MACD
+  const macd = calcMACD(prices);
+  const macdEl = document.getElementById('ind-macd');
+  const macdSEl = document.getElementById('ind-macd-s');
+  macdEl.textContent = macd.toFixed(2);
+  macdEl.className = 'ind-val ' + (macd>0?'up':'down');
+  macdSEl.textContent = macd>0 ? 'YÜKSELİŞ' : 'DÜŞÜŞ';
+  macdSEl.className = 'ind-signal ' + (macd>0?'signal-buy':'signal-sell');
+
+  // MA20
+  const ma20arr = calcMA(prices, 20);
+  const ma20 = ma20arr.filter(Boolean).pop();
+  const ma20El = document.getElementById('ind-ma20');
+  const ma20SEl = document.getElementById('ind-ma20-s');
+  if (ma20) {
+    ma20El.textContent = fmtNum(ma20);
+    const abv = last > ma20;
+    ma20El.className = 'ind-val ' + (abv?'up':'down');
+    ma20SEl.textContent = abv ? 'ÜSTÜNDE ↑' : 'ALTINDA ↓';
+    ma20SEl.className = 'ind-signal ' + (abv?'signal-buy':'signal-sell');
+  }
+
+  // MA50
+  const ma50arr = calcMA(prices, 50);
+  const ma50 = ma50arr.filter(Boolean).pop();
+  const ma50El = document.getElementById('ind-ma50');
+  const ma50SEl = document.getElementById('ind-ma50-s');
+  if (ma50) {
+    ma50El.textContent = fmtNum(ma50);
+    const abv = last > ma50;
+    ma50El.className = 'ind-val ' + (abv?'up':'down');
+    ma50SEl.textContent = abv ? 'ÜSTÜNDE ↑' : 'ALTINDA ↓';
+    ma50SEl.className = 'ind-signal ' + (abv?'signal-buy':'signal-sell');
+  }
+
+  // Bollinger
+  const boll = calcBollinger(prices);
+  const bollEl = document.getElementById('ind-boll');
+  const bollSEl = document.getElementById('ind-boll-s');
+  bollEl.textContent = fmtNum(boll.mid);
+  if (last > boll.upper) { bollSEl.textContent='ÜSTTE → SAT'; bollSEl.className='ind-signal signal-sell'; }
+  else if (last < boll.lower) { bollSEl.textContent='ALTTA → AL'; bollSEl.className='ind-signal signal-buy'; }
+  else { bollSEl.textContent='BANT İÇİ'; bollSEl.className='ind-signal signal-neutral'; }
+}
+
+// ================================================================
+// AI ANALİZ (Claude API)
+// ================================================================
+async function loadAI(code, name, stockData) {
+  if (currentTab !== 'ai') return;
+
+  const content = document.getElementById('rpContent');
+  content.innerHTML = `<div class="ai-loading"><div class="ai-spinner"></div><div>AI ANALİZİ HAZIRLANIYOR...</div></div>`;
+
+  // Cache check
+  const cacheKey = `${code}_${new Date().toDateString()}`;
+  if (aiCache[cacheKey]) { renderAI(aiCache[cacheKey]); return; }
+
+  const price = stockData.last || stockData.close || 0;
+  const chg   = stockData.change_rate || stockData.changeRate || 0;
+  const vol   = stockData.volume || stockData.vol || 0;
+
+  try {
+    const res = await fetch('/api/ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, name, price, chg, type: 'analysis' })
+    });
+    const ai = await res.json();
+    if (ai.error) throw new Error(ai.error);
+    aiCache[cacheKey] = ai;
+    renderAI(ai);
+  } catch(e) {
+    document.getElementById('rpContent').innerHTML = `<div class="ai-panel"><div style="padding:20px;font-family:var(--mono);font-size:10px;color:var(--muted)">AI analizi yüklenemedi: ${e.message}</div></div>`;
+  }
+}
+
+function renderAI(ai) {
+  const score = ai.sentiment_score || 50;
+  const sentiment = ai.sentiment || 'NÖTR';
+  const signal = ai.signal || 'TUT';
+  const col = score >= 65 ? 'var(--up)' : score <= 35 ? 'var(--down)' : 'var(--yellow)';
+  const sigCol = signal.includes('AL') ? 'var(--up)' : signal.includes('SAT') ? 'var(--down)' : 'var(--yellow)';
+
+  const bars = [
+    { label:'TEKNİK', val:ai.technical_score||50, color:'var(--blue)' },
+    { label:'TEMEL', val:ai.fundamental_score||50, color:'var(--purple)' },
+    { label:'MOMENTUM', val:ai.momentum_score||50, color:'var(--yellow)' },
+  ];
+
+  const risks = (ai.risks||[]).map(r=>`<div style="padding:4px 0;font-size:10px;color:var(--muted);border-bottom:1px solid var(--border);display:flex;gap:6px"><span style="color:var(--down)">▼</span>${r}</div>`).join('');
+  const opps  = (ai.opportunities||[]).map(o=>`<div style="padding:4px 0;font-size:10px;color:var(--muted);border-bottom:1px solid var(--border);display:flex;gap:6px"><span style="color:var(--up)">▲</span>${o}</div>`).join('');
+
+  document.getElementById('rpContent').innerHTML = `
+  <div class="ai-panel">
+    <div class="ai-score-card">
+      <div class="ai-score-label">DUYGU SKORU</div>
+      <div class="ai-score-gauge">
+        <div class="ai-score-num" style="color:${col}">${score}</div>
+        <div class="ai-score-desc">
+          <div class="ai-sentiment-label" style="color:${col}">${sentiment}</div>
+          <div class="ai-sentiment-sub">Sinyal: <span style="color:${sigCol};font-weight:600">${signal}</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ai-bars">
+      ${bars.map(b=>`
+      <div class="ai-bar-row">
+        <div class="ai-bar-label">${b.label}</div>
+        <div class="ai-bar-track"><div class="ai-bar-fill" style="width:${b.val}%;background:${b.color}"></div></div>
+        <div class="ai-bar-val">${b.val}</div>
+      </div>`).join('')}
+    </div>
+
+    <div class="ai-summary">${ai.summary || '—'}</div>
+
+    ${ai.key_levels ? `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px">
+      <div class="ind-card"><div class="ind-label">DESTEK</div><div class="ind-val down">${fmtNum(ai.key_levels.destek)}</div></div>
+      <div class="ind-card"><div class="ind-label">DİRENÇ</div><div class="ind-val up">${fmtNum(ai.key_levels.direnc)}</div></div>
+    </div>` : ''}
+
+    ${risks ? `<div style="margin-bottom:8px"><div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:4px">RİSKLER</div>${risks}</div>` : ''}
+    ${opps  ? `<div><div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:4px">FIRSATLAR</div>${opps}</div>` : ''}
+  </div>`;
+}
+
+// ================================================================
+// NEWS TAB
+// ================================================================
+async function loadNews(code, name) {
+  const content = document.getElementById('rpContent');
+  content.innerHTML = `<div class="ai-loading"><div class="ai-spinner"></div><div>HABERLER YÜKLENIYOR...</div></div>`;
+
+  try {
+    const res = await fetch('/api/ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, name, type: 'news' })
+    });
+    const news = await res.json();
+    if (!Array.isArray(news)) throw new Error('invalid response');
+    content.innerHTML = news.map(n => {
+      const col = n.sentiment==='POZİTİF' ? 'var(--up)' : n.sentiment==='NEGATİF' ? 'var(--down)' : 'var(--yellow)';
+      return `<div class="news-item">
+        <div class="news-headline"><span class="news-sentiment" style="background:${col}"></span>${n.headline}</div>
+        <div class="news-meta">${n.source} &nbsp;·&nbsp; ${n.time} &nbsp;·&nbsp; <span style="color:${col}">${n.sentiment}</span></div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    content.innerHTML = `<div style="padding:20px;font-family:var(--mono);font-size:10px;color:var(--muted)">Haberler yüklenemedi.</div>`;
+  }
+}
+
+// ================================================================
+// SEARCH
+// ================================================================
+const searchInput = document.getElementById('searchInput');
+const searchDropdown = document.getElementById('searchDropdown');
+
+searchInput.addEventListener('input', () => {
+  const q = searchInput.value.trim().toUpperCase();
+  if (!q) { searchDropdown.classList.remove('open'); return; }
+  const results = BIST100.filter(([c,n]) => c.includes(q) || n.toUpperCase().includes(q)).slice(0,8);
+  if (!results.length) { searchDropdown.classList.remove('open'); return; }
+  searchDropdown.innerHTML = results.map(([c,n]) => {
+    const s = stockCache[c];
+    const chg = s ? (s.change_rate||s.changeRate||0) : 0;
+    return `<div class="sdrop-item" onclick="selectStock('${c}','${n}');searchInput.value='';searchDropdown.classList.remove('open')">
+      <div><span class="sdrop-code">${c}</span> <span class="sdrop-name">${n}</span></div>
+      <span class="${chg>=0?'up':'down'}" style="font-family:var(--mono);font-size:10px">${chg?(chg>=0?'+':'')+chg.toFixed(2)+'%':'—'}</span>
+    </div>`;
+  }).join('');
+  searchDropdown.classList.add('open');
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search-wrap')) searchDropdown.classList.remove('open');
+});
+
+// ================================================================
+// TAB SWITCH
+// ================================================================
+function switchTab(tab) {
+  currentTab = tab;
+  document.getElementById('tab-ai').classList.toggle('active', tab==='ai');
+  document.getElementById('tab-news').classList.toggle('active', tab==='news');
+  if (!currentCode) return;
+  const name = findName(currentCode);
+  const s = stockCache[currentCode] || {};
+  if (tab==='ai') loadAI(currentCode, name, s);
+  else loadNews(currentCode, name);
+}
+
+// ================================================================
+// TIMEFRAME
+// ================================================================
+function setTF(btn, tf) {
+  document.querySelectorAll('[data-tf]').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  currentTF = tf;
+  if (currentCode) loadChart(currentCode, tf);
+}
+
+// ================================================================
+// UTILS
+// ================================================================
+function fmtNum(n, dec=2) {
+  if (!n || isNaN(n)) return '—';
+  return parseFloat(n).toLocaleString('tr-TR', {minimumFractionDigits:dec, maximumFractionDigits:dec});
+}
+function fmtVol(n) {
+  if (!n || isNaN(n)) return '—';
+  if (n>=1e9) return (n/1e9).toFixed(1)+'Mr';
+  if (n>=1e6) return (n/1e6).toFixed(1)+'M';
+  if (n>=1e3) return (n/1e3).toFixed(1)+'K';
+  return n.toString();
+}
+
+// ================================================================
+// INIT
+// ================================================================
+async function init() {
+  document.getElementById('loText').textContent = 'YAHOO FİNANCE BAĞLANTISI...';
+  await fetchAllStocks();
+
+  document.getElementById('loText').textContent = 'HAZIR';
+  setTimeout(() => {
+    const l = document.getElementById('loader');
+    l.style.transition = 'opacity 0.4s';
+    l.style.opacity = '0';
+    setTimeout(() => l.style.display='none', 400);
+  }, 1000);
+
+  // Auto-refresh every 3 min
+  setInterval(fetchAllStocks, 3*60*1000);
+
+  // Auto-select first watchlist item
+  setTimeout(() => {
+    if (watchlist.length) selectStock(watchlist[0], findName(watchlist[0]));
+  }, 1500);
+}
+
+init();
+</script>
+</body>
+</html>
