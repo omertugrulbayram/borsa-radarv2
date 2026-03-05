@@ -1390,8 +1390,7 @@ Cevapların kısa ve net olsun (2-4 cümle). Emoji kullanabilirsin ama abartma.
 
   asShowTyping();
   try {
-    const reply = await callClaude(systemPrompt, context + '
-Kullanıcı sorusu: ' + msg);
+    const reply = await callClaude(systemPrompt, context + '\nKullanıcı sorusu: ' + msg);
     asRemoveTyping();
     const formatted = reply
       .replace(/(AL|satın al|alınabilir|alım fırsatı)/gi, '<span class="tag-al">$1</span>')
