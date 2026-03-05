@@ -277,96 +277,6 @@ body {
 .lo-text { font-family:var(--mono); font-size:10px; color:var(--muted); letter-spacing:2px; animation:ft 0.6s infinite alternate; }
 @keyframes ft { from{opacity:0.3} to{opacity:1} }
 
-/* ── RADAR ASISTAN ──────────────────────────────── */
-#asistanBtn {
-  position:fixed; bottom:24px; right:24px; z-index:1000;
-  width:56px; height:56px; border-radius:50%;
-  background:linear-gradient(135deg,#1a1a2e,#16213e);
-  border:2px solid var(--blue); cursor:pointer;
-  display:flex; align-items:center; justify-content:center;
-  box-shadow:0 4px 20px rgba(79,142,247,0.4);
-  transition:all 0.2s; font-size:22px;
-}
-#asistanBtn:hover { transform:scale(1.1); box-shadow:0 6px 28px rgba(79,142,247,0.6); }
-#asistanBtn .pulse-ring {
-  position:absolute; inset:-4px; border-radius:50%;
-  border:2px solid var(--blue); opacity:0;
-  animation:pulse-ring 2s ease-out infinite;
-}
-@keyframes pulse-ring { 0%{opacity:0.6;transform:scale(1)} 100%{opacity:0;transform:scale(1.35)} }
-
-#asistanPanel {
-  position:fixed; bottom:90px; right:24px; z-index:1000;
-  width:340px; max-height:520px;
-  background:var(--surface); border:1px solid var(--border);
-  border-radius:12px; box-shadow:0 8px 40px rgba(0,0,0,0.7);
-  display:flex; flex-direction:column; overflow:hidden;
-  transform:scale(0.92) translateY(12px); opacity:0; pointer-events:none;
-  transition:all 0.2s cubic-bezier(0.34,1.56,0.64,1);
-}
-#asistanPanel.open {
-  transform:scale(1) translateY(0); opacity:1; pointer-events:all;
-}
-.as-header {
-  display:flex; align-items:center; gap:10px;
-  padding:12px 14px; background:var(--bg2);
-  border-bottom:1px solid var(--border); flex-shrink:0;
-}
-.as-avatar {
-  width:36px; height:36px; border-radius:50%;
-  background:linear-gradient(135deg,#1e3a5f,#0f2744);
-  border:2px solid var(--blue);
-  display:flex; align-items:center; justify-content:center;
-  font-size:18px; flex-shrink:0;
-}
-.as-name { font-weight:600; font-size:13px; color:#fff; }
-.as-status { font-family:var(--mono); font-size:9px; color:var(--up); letter-spacing:1px; }
-.as-close { margin-left:auto; cursor:pointer; color:var(--muted); font-size:18px; line-height:1; padding:2px 6px; border-radius:3px; }
-.as-close:hover { color:var(--text); background:var(--border); }
-
-.as-messages {
-  flex:1; overflow-y:auto; padding:12px;
-  display:flex; flex-direction:column; gap:10px;
-  scrollbar-width:thin; scrollbar-color:var(--border) transparent;
-}
-.as-messages::-webkit-scrollbar { width:3px; }
-.as-messages::-webkit-scrollbar-thumb { background:var(--border); }
-
-.as-msg {
-  display:flex; gap:8px; align-items:flex-start;
-}
-.as-msg-avatar {
-  width:26px; height:26px; border-radius:50%; flex-shrink:0;
-  background:linear-gradient(135deg,#1e3a5f,#0f2744);
-  border:1px solid var(--blue);
-  display:flex; align-items:center; justify-content:center; font-size:13px;
-}
-.as-bubble {
-  background:var(--bg2); border:1px solid var(--border);
-  border-radius:0 8px 8px 8px;
-  padding:8px 10px; font-size:11px; line-height:1.65;
-  color:var(--text); flex:1;
-}
-.as-bubble.user {
-  background:rgba(79,142,247,0.1); border-color:rgba(79,142,247,0.3);
-  border-radius:8px 0 8px 8px;
-}
-.as-bubble b { color:#fff; }
-.as-bubble .tag-al  { color:var(--up); font-weight:600; }
-.as-bubble .tag-sat { color:var(--down); font-weight:600; }
-.as-bubble .tag-bekle { color:var(--yellow); font-weight:600; }
-
-.as-typing {
-  display:flex; gap:3px; align-items:center; padding:4px 0;
-}
-.as-typing span {
-  width:5px; height:5px; border-radius:50%; background:var(--muted);
-  animation:typing-dot 1.2s ease-in-out infinite;
-}
-.as-typing span:nth-child(2) { animation-delay:0.2s; }
-.as-typing span:nth-child(3) { animation-delay:0.4s; }
-@keyframes typing-dot { 0%,60%,100%{opacity:0.2;transform:scale(1)} 30%{opacity:1;transform:scale(1.3)} }
-
 
 </style>
 </head>
@@ -477,29 +387,6 @@ body {
     </div>
   </div>
 
-<!-- RADAR ASİSTAN BUTONU -->
-<button id="asistanBtn" onclick="toggleAsistan()" title="Radar Asistan">
-  <div class="pulse-ring"></div>
-  🤖
-</button>
-
-<!-- RADAR ASİSTAN PANELİ -->
-<div id="asistanPanel">
-  <div class="as-header">
-    <div class="as-avatar">🤖</div>
-    <div>
-      <div class="as-name">Radar Asistan</div>
-      <div class="as-status" id="asStatus">● ÇEVRİMİÇİ</div>
-    </div>
-    <div class="as-close" onclick="toggleAsistan()">×</div>
-  </div>
-  <div class="as-messages" id="asMessages">
-    <div class="as-msg">
-      <div class="as-msg-avatar">🤖</div>
-      <div class="as-bubble">Sol taraftan bir hisse seçince sana teknik analizini anlatırım. 📊</div>
-    </div>
-  </div>
-</div>
 
 
 <script>
@@ -1111,8 +998,6 @@ function updateTechnicalPanel(prices, highs, lows, rsi, macd, stoch, willr, cci,
     }).join('')}
   </div>`;
 
-  // Notify asistan
-  notifyAsistan(currentCode, document.getElementById('shName').textContent, {rsi,macd,stoch,willr,cci,ma20,ma50,ma200,boll,last,atr,score,signal,buyCount,sellCount,neutCount});
 }
 
 // ================================================================
@@ -1244,128 +1129,6 @@ function fmtVol(n) {
 }
 
 
-// ================================================================
-// RADAR ASİSTAN
-// ================================================================
-let asistanOpen = false;
-let asistanContext = { code: null, name: null, indicators: null };
-let asistanBusy = false;
-
-function toggleAsistan() {
-  asistanOpen = !asistanOpen;
-  document.getElementById('asistanPanel').classList.toggle('open', asistanOpen);
-  if (asistanOpen && asistanContext.code && asistanContext.indicators && !asistanBusy) {
-    runAnalysis(asistanContext.code, asistanContext.name, asistanContext.indicators);
-  }
-}
-
-function asAddMsg(html) {
-  const box = document.getElementById('asMessages');
-  const div = document.createElement('div');
-  div.className = 'as-msg';
-  div.innerHTML = '<div class="as-msg-avatar">\u{1F916}</div><div class="as-bubble">' + html + '</div>';
-  box.appendChild(div);
-  box.scrollTop = box.scrollHeight;
-}
-
-function asShowTyping() {
-  if (document.getElementById('asTyping')) return;
-  const box = document.getElementById('asMessages');
-  const div = document.createElement('div');
-  div.className = 'as-msg'; div.id = 'asTyping';
-  div.innerHTML = '<div class="as-msg-avatar">\u{1F916}</div><div class="as-bubble"><div class="as-typing"><span></span><span></span><span></span></div></div>';
-  box.appendChild(div);
-  box.scrollTop = box.scrollHeight;
-}
-
-function asRemoveTyping() {
-  const el = document.getElementById('asTyping');
-  if (el) el.remove();
-}
-
-async function callClaude(system, userMsg) {
-  const r = await fetch('/api/ai', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ system: system, messages: [{ role: 'user', content: userMsg }], max_tokens: 450 })
-  });
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-  const data = await r.json();
-  if (data.error) throw new Error(JSON.stringify(data.error));
-  const txt = data.content && data.content[0] && data.content[0].text;
-  if (!txt) throw new Error('Bos yanit');
-  return txt;
-}
-
-function fmtReply(text) {
-  return text
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/\n/g, '<br>')
-    .replace(/\b(al|alim firsati|alinabilir)\b/gi, '<span class="tag-al">$1</span>')
-    .replace(/\b(sat|satis sinyali)\b/gi, '<span class="tag-sat">$1</span>')
-    .replace(/\b(bekle|izle|temkinli|dikkatli)\b/gi, '<span class="tag-bekle">$1</span>');
-}
-
-async function runAnalysis(code, name, ind) {
-  if (asistanBusy) return;
-  asistanBusy = true;
-
-  // Paneli temizle, başlık ekle
-  const box = document.getElementById('asMessages');
-  box.innerHTML = '';
-  const hdr = document.createElement('div');
-  hdr.style.cssText = 'text-align:center;padding:8px 0 4px;font-family:var(--mono);font-size:10px;color:var(--blue);letter-spacing:1px;font-weight:600';
-  hdr.textContent = code + ' — ' + name;
-  box.appendChild(hdr);
-  asShowTyping();
-
-  const score = ind.score || 50;
-  const signal = ind.signal || 'NÖTR';
-  const buyCount = ind.buyCount || 0;
-  const neutCount = ind.neutCount || 0;
-  const sellCount = ind.sellCount || 0;
-  const last = ind.last;
-  const rsi = ind.rsi;
-  const macd = ind.macd;
-  const stoch = ind.stoch;
-  const ma20 = ind.ma20;
-  const ma50 = ind.ma50;
-  const boll = ind.boll;
-
-  const sinyal = signal === 'GÜÇLÜ AL' ? 'çok güçlü alım sinyali' : signal === 'AL' ? 'alım sinyali' : signal === 'GÜÇLÜ SAT' ? 'çok güçlü satış sinyali' : signal === 'SAT' ? 'satış sinyali' : 'nötr sinyal';
-  const rsiTxt = rsi == null ? '' : 'RSI: ' + rsi.toFixed(1) + (rsi < 30 ? ' (dipte, aşırı satılmış)' : rsi > 70 ? ' (tepede, aşırı alınmış)' : ' (normal bölge)') + '. ';
-  const macdTxt = macd == null ? '' : 'MACD ' + (macd > 0 ? 'pozitif (momentum yukarı)' : 'negatif (momentum aşağı)') + '. ';
-  const stochTxt = stoch == null ? '' : 'Stokastik: ' + stoch.toFixed(1) + (stoch < 20 ? ' (aşırı satılmış)' : stoch > 80 ? ' (aşırı alınmış)' : '') + '. ';
-  const trendTxt = (ma20 && ma50 && last) ? (last > ma20 && last > ma50 ? 'Kısa ve orta vadeli trendler yukarı. ' : last < ma20 && last < ma50 ? 'Kısa ve orta vadeli trendler aşağı. ' : 'Trendler karışık. ') : '';
-  const bollTxt = (boll && last) ? (last > boll.upper ? 'Üst Bollinger bandının üstünde (aşırı alım). ' : last < boll.lower ? 'Alt Bollinger bandının altında (aşırı satım). ' : 'Bollinger bantları içinde. ') : '';
-
-  const system = 'Sen Radar Asistansin. Borsa bilmeyen birine teknik analizi cok sade, gunluk dilde anlatirsin. Teknik terim kullanmak zorunda kalirsan parantez icinde aciklarsın. Kesin "al" veya "sat" deme ama teknik gorunum olumlu/olumsuz diye yorum yap. 4-6 cumle yaz. Sadece duz metin, HTML tag kullanma.';
-
-  const userMsg = name + ' (' + code + ') icin teknik analiz yap. '
-    + 'Fiyat: ' + (last ? last.toFixed(2) + ' TL' : 'bilinmiyor') + '. '
-    + 'Genel sinyal skoru: ' + score + '/100, ' + sinyal + ' (' + buyCount + ' al / ' + neutCount + ' nötr / ' + sellCount + ' sat). '
-    + rsiTxt + macdTxt + stochTxt + trendTxt + bollTxt
-    + 'Bunu borsa bilmeyen birine anlasilir Turkcesiyle anlat ve ne yapmak mantikli olabilir diye yorum yap, ama kesin tavsiye verme.';
-
-  try {
-    const reply = await callClaude(system, userMsg);
-    asRemoveTyping();
-    asAddMsg(fmtReply(reply));
-  } catch(e) {
-    asRemoveTyping();
-    asAddMsg('Analiz yapilamadi: ' + e.message + '. Hisseye tekrar tikla.');
-  } finally {
-    asistanBusy = false;
-  }
-}
-
-function notifyAsistan(code, name, indicators) {
-  asistanContext = { code: code, name: name, indicators: indicators };
-  // Paneli otomatik aç
-  asistanOpen = true;
-  document.getElementById('asistanPanel').classList.add('open');
-  runAnalysis(code, name, indicators);
-}
 // ================================================================
 // INIT
 // ================================================================
