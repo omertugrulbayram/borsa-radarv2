@@ -1036,152 +1036,72 @@ function renderTemelTab(code) {
     fetch(`/api/fundamentals?code=${code}`)
       .then(r => r.json())
       .then(d2 => {
-        if (d2.error) { el.innerHTML = `<div style="padding:20px;font-family:var(--mono);font-size:11px;color:var(--muted)">Veri yok: ${d2.error}</div>`; return; }
+        if (d2.error) { el.innerHTML = `<div style="padding:20px;font-family:var(--mono);font-size:11px;color:var(--muted)">Veri bulunamadı</div>`; return; }
         fundCache[code] = d2;
         if (currentRpTab === 'temel') renderTemelTab(code);
       })
-      .catch(e => el.innerHTML = `<div style="padding:20px;font-family:var(--mono);font-size:11px;color:var(--muted)">Yüklenemedi: ${e.message}</div>`);
+      .catch(e => el.innerHTML = `<div style="padding:20px;font-family:var(--mono);font-size:11px;color:var(--muted)">Yüklenemedi</div>`);
     return;
   }
 
-  const fmt = (v, dec=2) => v != null ? parseFloat(v).toLocaleString('tr-TR', {minimumFractionDigits:dec,maximumFractionDigits:dec}) : '—';
+  const fmt  = (v, dec=2) => v != null ? parseFloat(v).toLocaleString('tr-TR', {minimumFractionDigits:dec, maximumFractionDigits:dec}) : '—';
   const fmtB = v => {
-    if (v == null) return '—';
-    const abs = Math.abs(v);
-    const sign = v < 0 ? '-' : '';
-    if (abs >= 1e12) return sign+(abs/1e12).toFixed(2)+'T ₺';
-    if (abs >= 1e9)  return sign+(abs/1e9).toFixed(2)+'Mr ₺';
-    if (abs >= 1e6)  return sign+(abs/1e6).toFixed(1)+'M ₺';
-    return sign+abs.toFixed(0)+' ₺';
+    if (!v) return '—';
+    const a = Math.abs(v);
+    if (a >= 1e12) return (v/1e12).toFixed(2) + 'T ₺';
+    if (a >= 1e9)  return (v/1e9).toFixed(2)  + 'Mr ₺';
+    if (a >= 1e6)  return (v/1e6).toFixed(1)  + 'M ₺';
+    return v.toFixed(0) + ' ₺';
   };
-  const row = (label, val, color) => val === '—' ? '' : `
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(30,30,46,0.5)">
+  const row = (label, val, color) => {
+    if (!val || val === '—') return '';
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(30,30,46,0.5)">
       <span style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px">${label}</span>
       <span style="font-family:var(--mono);font-size:11px;font-weight:500;color:${color||'var(--text)'}">${val}</span>
     </div>`;
-  const sec = t => `<div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:2px;margin:10px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border)">${t}</div>`;
-  const colNum = (v, good, bad) => v==null?'var(--text)':parseFloat(v)>=good?'var(--up)':parseFloat(v)<=bad?'var(--down)':'var(--yellow)';
-  const colPct = (v, good, bad) => v==null?'var(--text)':v>=good?'var(--up)':v<=bad?'var(--down)':'var(--yellow)';
+  };
+  const sec = t => `<div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:2px;margin:12px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border)">${t}</div>`;
 
-  // Analist bar
-  const total = d.analystTotal || 0;
-  const buyPct  = total ? Math.round(d.analystBuy/total*100) : 0;
-  const holdPct = total ? Math.round(d.analystHold/total*100) : 0;
-  const sellPct = total ? 100-buyPct-holdPct : 0;
-  const recCol  = d.recColor==='up'?'var(--up)':d.recColor==='down'?'var(--down)':'var(--yellow)';
+  const chgCol = d.changePct >= 0 ? 'var(--up)' : 'var(--down)';
+  const chgStr = d.changePct != null ? (d.changePct >= 0 ? '+' : '') + d.changePct.toFixed(2) + '%' : null;
 
-  el.innerHTML = `<div style="padding:10px 12px;font-size:11px">
+  el.innerHTML = `<div style="padding:10px 12px">
 
-    ${d.companyName ? `<div style="font-size:11px;font-weight:600;color:#fff;margin-bottom:2px">${d.companyName}</div>` : ''}
-    ${d.sector ? `<div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:8px">${d.sector} · ${d.industry||''}</div>` : ''}
+    <div style="margin-bottom:10px">
+      ${d.companyName ? `<div style="font-size:12px;font-weight:600;color:#fff;margin-bottom:2px">${d.companyName}</div>` : ''}
+      ${d.sector ? `<div style="font-family:var(--mono);font-size:9px;color:var(--muted)">${d.sector}${d.industry ? ' · ' + d.industry : ''}</div>` : ''}
+      ${d.isin ? `<div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:2px">ISIN: ${d.isin}</div>` : ''}
+    </div>
 
-    ${sec('DEĞERLEME')}
-    ${row('F/K (TTM)',     d.pe!=null?d.pe+'x':'—',    colNum(d.pe,0,25))}
-    ${row('PD/DD',        d.pb!=null?d.pb+'x':'—',    colNum(d.pb,0,3))}
-    ${row('F/S',          d.ps!=null?d.ps+'x':'—')}
-    ${row('EV/EBITDA',    d.evEbitda!=null?d.evEbitda+'x':'—')}
-    ${row('EPS (TTM)',     d.eps!=null?fmt(d.eps)+' ₺':'—')}
-    ${row('Piy. Değeri',  fmtB(d.marketCap))}
+    ${sec('FİYAT BİLGİSİ')}
+    ${row('Güncel Fiyat', d.price ? fmt(d.price) + ' ₺' : null)}
+    ${row('Değişim', chgStr, chgCol)}
+    ${row('52H Yüksek', d.week52High ? fmt(d.week52High) + ' ₺' : null, 'var(--up)')}
+    ${row('52H Düşük',  d.week52Low  ? fmt(d.week52Low)  + ' ₺' : null, 'var(--down)')}
+    ${row('Günlük Hacim', d.volume ? fmtB(d.volume).replace('₺','') : null)}
+    ${row('Ort. Hacim',   d.avgVolume ? fmtB(d.avgVolume).replace('₺','') : null)}
 
-    ${sec('KARLILIK (TTM)')}
-    ${row('ROE',          d.roe!=null?'%'+d.roe:'—',   colPct(d.roe,20,5))}
-    ${row('ROA',          d.roa!=null?'%'+d.roa:'—',   colPct(d.roa,10,2))}
-    ${row('ROIC',         d.roic!=null?'%'+d.roic:'—')}
-    ${row('Brüt Marj',    d.grossMargin!=null?'%'+d.grossMargin:'—', colPct(d.grossMargin,30,10))}
-    ${row('Faaliyet Marj',d.operMargin!=null?'%'+d.operMargin:'—',  colPct(d.operMargin,15,0))}
-    ${row('Net Marj',     d.netMargin!=null?'%'+d.netMargin:'—',    colPct(d.netMargin,10,0))}
+    ${sec('ŞİRKET')}
+    ${row('Piyasa Değeri', fmtB(d.marketCap))}
+    ${row('Beta', d.beta != null ? d.beta.toString() : null, Math.abs(d.beta) > 1.5 ? 'var(--yellow)' : 'var(--text)')}
+    ${row('Son Temettü', d.lastDividend ? fmt(d.lastDividend) + ' ₺' : null, 'var(--up)')}
+    ${row('Döviz', d.currency)}
 
-    ${sec('GELİR TABLOSU')}
-    ${d.reportPeriod ? `<div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:4px">Dönem: ${d.reportPeriod}</div>` : ''}
-    ${row('Gelir',        fmtB(d.revenue))}
-    ${row('Brüt Kar',     fmtB(d.grossProfit))}
-    ${row('Faal. Karı',   fmtB(d.operatingIncome), d.operatingIncome>=0?'var(--up)':'var(--down)')}
-    ${row('Net Kar',      fmtB(d.netIncome),        d.netIncome>=0?'var(--up)':'var(--down)')}
-    ${row('EBITDA',       fmtB(d.ebitda))}
-    ${row('Gelir Büy.',   d.revenueGrowth!=null?'%'+d.revenueGrowth:'—',     colPct(d.revenueGrowth,10,0))}
-    ${row('Net Kar Büy.', d.netIncomeGrowth!=null?'%'+d.netIncomeGrowth:'—', colPct(d.netIncomeGrowth,10,0))}
-
-    ${sec('BİLANÇO')}
-    ${row('Toplam Varlık', fmtB(d.totalAssets))}
-    ${row('Özkaynaklar',   fmtB(d.totalEquity))}
-    ${row('Nakit',         fmtB(d.cash), 'var(--up)')}
-    ${row('Kısa V. Borç',  fmtB(d.shortTermDebt))}
-    ${row('Uzun V. Borç',  fmtB(d.longTermDebt))}
-    ${row('Toplam Borç',   fmtB(d.totalDebt))}
-    ${row('Borç/Özk.',     d.debtToEquity!=null?d.debtToEquity+'x':'—', colNum(d.debtToEquity,0,2))}
-    ${row('Cari Oran',     d.currentRatio!=null?d.currentRatio+'x':'—', colNum(d.currentRatio,2,1))}
-    ${row('Hızlı Oran',    d.quickRatio!=null?d.quickRatio+'x':'—')}
-
-    ${sec('NAKİT AKIŞI')}
-    ${row('İşletme NCF',  fmtB(d.operatingCF), d.operatingCF>=0?'var(--up)':'var(--down)')}
-    ${row('Capex',        fmtB(d.capex))}
-    ${row('Serbest NCF',  fmtB(d.freeCashFlow), d.freeCashFlow>=0?'var(--up)':'var(--down)')}
-    ${d.dividendsPaid ? row('Ödenen Temettü', fmtB(Math.abs(d.dividendsPaid))) : ''}
-
-    ${d.dividendYield ? `${sec('TEMETTÜ')}${row('Temettü Verimi','%'+d.dividendYield, colPct(d.dividendYield,5,0))}` : ''}
-
-    ${sec('ANALİST')}
-    ${total > 0 ? `
-    <div style="margin-bottom:8px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-        <span style="font-family:var(--mono);font-size:12px;font-weight:600;color:${recCol}">${d.recommendation}</span>
-        <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">${total} analist</span>
+    <div style="margin-top:16px;padding:10px;background:var(--bg2);border:1px solid var(--border);border-radius:4px">
+      <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:6px">BİLANÇO VERİSİ</div>
+      <div style="font-size:10px;color:var(--muted);line-height:1.6">
+        Detaylı finansal tablo verisi (F/K, bilanço, gelir tablosu) şu an mevcut API ile sağlanamamaktadır.
+        <br><br>
+        <a href="https://www.kap.org.tr/tr/Bildirim/KurumsalBildirimler?code=${code}" target="_blank" style="color:var(--blue)">KAP'ta görüntüle →</a>
+        &nbsp;&nbsp;
+        <a href="https://finance.yahoo.com/quote/${code}.IS/financials/" target="_blank" style="color:var(--blue)">Yahoo Finance →</a>
       </div>
-      <div style="display:flex;height:6px;border-radius:3px;overflow:hidden;gap:1px">
-        <div style="width:${buyPct}%;background:var(--up)"></div>
-        <div style="width:${holdPct}%;background:var(--yellow)"></div>
-        <div style="width:${sellPct}%;background:var(--down)"></div>
-      </div>
-      <div style="display:flex;justify-content:space-between;margin-top:3px;font-family:var(--mono);font-size:9px;color:var(--muted)">
-        <span style="color:var(--up)">AL ${d.analystBuy}</span>
-        <span style="color:var(--yellow)">TUT ${d.analystHold}</span>
-        <span style="color:var(--down)">SAT ${d.analystSell}</span>
-      </div>
-    </div>` : '<div style="font-family:var(--mono);font-size:10px;color:var(--muted)">Analist verisi yok</div>'}
-
-    ${sec('DİĞER')}
-    ${row('Beta',         d.beta!=null?d.beta:'—')}
-    ${row('52H Yüksek',   d.week52High!=null?fmt(d.week52High)+' ₺':'—')}
-    ${row('52H Düşük',    d.week52Low!=null?fmt(d.week52Low)+' ₺':'—')}
-    ${d.employees ? row('Çalışan', parseInt(d.employees).toLocaleString('tr-TR')) : ''}
+    </div>
 
   </div>`;
 }
 
-// ================================================================
-// SEARCH
-// ================================================================
-const searchInput = document.getElementById('searchInput');
-const searchDropdown = document.getElementById('searchDropdown');
 
-searchInput.addEventListener('input', () => {
-  const q = searchInput.value.trim().toUpperCase();
-  if (!q) { searchDropdown.classList.remove('open'); return; }
-  const results = BIST100.filter(([c,n]) => c.includes(q) || n.toUpperCase().includes(q)).slice(0,8);
-  if (!results.length) { searchDropdown.classList.remove('open'); return; }
-  searchDropdown.innerHTML = results.map(([c,n]) => {
-    const s = stockCache[c];
-    const chg = s ? (s.change_rate||s.changeRate||0) : 0;
-    return `<div class="sdrop-item" onclick="selectStock('${c}','${n}');searchInput.value='';searchDropdown.classList.remove('open')">
-      <div><span class="sdrop-code">${c}</span> <span class="sdrop-name">${n}</span></div>
-      <span class="${chg>=0?'up':'down'}" style="font-family:var(--mono);font-size:10px">${chg?(chg>=0?'+':'')+chg.toFixed(2)+'%':'—'}</span>
-    </div>`;
-  }).join('');
-  searchDropdown.classList.add('open');
-});
-
-document.addEventListener('click', e => {
-  if (!e.target.closest('.search-wrap')) searchDropdown.classList.remove('open');
-});
-
-// ================================================================
-// TAB SWITCH
-// ================================================================
-// switchTab removed
-
-// ================================================================
-// TIMEFRAME
-// ================================================================
 function setTF(btn, tf) {
   document.querySelectorAll('[data-tf]').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
