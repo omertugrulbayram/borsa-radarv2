@@ -1,105 +1,135 @@
-// Yahoo Finance v10 quoteSummary — server-side proxy (no CORS, no crumb needed from Vercel IP)
+// Financial Modeling Prep API — bilanço, çarpanlar, analist hedefleri
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const { ticker } = req.query;
-  if (!ticker) return res.status(400).json({ error: 'ticker required' });
+  const { code } = req.query;
+  if (!code) return res.status(400).json({ error: 'code required' });
 
-  const headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'application/json, text/plain, */*',
-    'Accept-Language': 'en-US,en;q=0.9',
-    'Origin': 'https://finance.yahoo.com',
-    'Referer': 'https://finance.yahoo.com/',
-  };
+  const key = process.env.FMP_API_KEY;
+  if (!key) return res.status(500).json({ error: 'FMP_API_KEY not set' });
+
+  // FMP BIST ticker format: THYAO.IS
+  const ticker = `${code}.IS`;
+  const base = 'https://financialmodelingprep.com/api/v3';
 
   try {
-    // Step 1: Get crumb by hitting the quote page
-    const crumbRes = await fetch('https://query2.finance.yahoo.com/v1/test/getcrumb', { headers });
-    const crumb = await crumbRes.text();
+    const [profile, ratios, income, balance, cashflow, analyst, quote] = await Promise.allSettled([
+      fetch(`${base}/profile/${ticker}?apikey=${key}`).then(r=>r.json()),
+      fetch(`${base}/ratios-ttm/${ticker}?apikey=${key}`).then(r=>r.json()),
+      fetch(`${base}/income-statement/${ticker}?limit=4&apikey=${key}`).then(r=>r.json()),
+      fetch(`${base}/balance-sheet-statement/${ticker}?limit=2&apikey=${key}`).then(r=>r.json()),
+      fetch(`${base}/cash-flow-statement/${ticker}?limit=2&apikey=${key}`).then(r=>r.json()),
+      fetch(`${base}/analyst-stock-recommendations/${ticker}?limit=5&apikey=${key}`).then(r=>r.json()),
+      fetch(`${base}/quote/${ticker}?apikey=${key}`).then(r=>r.json()),
+    ]);
 
-    const modules = 'defaultKeyStatistics,financialData,summaryDetail,assetProfile,incomeStatementHistory,balanceSheetHistory,cashflowStatementHistory';
-    const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=${modules}&crumb=${encodeURIComponent(crumb)}`;
+    const p  = profile.value?.[0]  || {};
+    const r0 = ratios.value?.[0]   || {};
+    const i0 = income.value?.[0]   || {};
+    const i1 = income.value?.[1]   || {};
+    const b0 = balance.value?.[0]  || {};
+    const cf = cashflow.value?.[0] || {};
+    const an = analyst.value       || [];
+    const q0 = quote.value?.[0]    || {};
 
-    const r = await fetch(url, { headers });
-    const data = await r.json();
+    const n = (v, d=2) => v != null && !isNaN(v) ? +parseFloat(v).toFixed(d) : null;
+    const pct = (v, d=1) => v != null && !isNaN(v) ? +(v*100).toFixed(d) : null;
+    const fmtGrowth = (cur, prev) => (cur && prev && prev !== 0) ? +((cur-prev)/Math.abs(prev)*100).toFixed(1) : null;
 
-    if (data.quoteSummary?.error || !data.quoteSummary?.result?.[0]) {
-      // Try v11 as fallback
-      const url11 = `https://query1.finance.yahoo.com/v11/finance/quoteSummary/${ticker}?modules=${modules}`;
-      const r11 = await fetch(url11, { headers });
-      const d11 = await r11.json();
-      if (!d11.quoteSummary?.result?.[0]) {
-        return res.status(200).json({ fundamentals: {}, news: [], error: 'no_data' });
-      }
-      return res.status(200).json(parseResult(d11.quoteSummary.result[0]));
-    }
+    // Analist özeti
+    const analystSummary = an.slice(0,3).map(a => ({
+      date: a.date,
+      buy: a.analystRatingsBuy,
+      hold: a.analystRatingsHold,
+      sell: a.analystRatingsSell,
+    }));
+    const totalBuy  = an[0] ? (an[0].analystRatingsBuy||0) : 0;
+    const totalHold = an[0] ? (an[0].analystRatingsHold||0) : 0;
+    const totalSell = an[0] ? (an[0].analystRatingsSell||0) + (an[0].analystRatingsStrongSell||0) : 0;
+    const totalAn   = totalBuy + totalHold + totalSell;
+    const recText   = totalBuy > totalSell+totalHold ? 'GÜÇLÜ AL' : totalBuy > totalSell ? 'AL' : totalSell > totalBuy ? 'SAT' : 'TUT';
+    const recCol    = recText.includes('AL') ? 'up' : recText === 'SAT' ? 'down' : 'neutral';
 
-    return res.status(200).json(parseResult(data.quoteSummary.result[0]));
+    return res.status(200).json({
+      // Şirket bilgisi
+      companyName:   p.companyName || null,
+      sector:        p.sector || null,
+      industry:      p.industry || null,
+      description:   p.description ? p.description.substring(0,200)+'...' : null,
+      employees:     p.fullTimeEmployees || null,
+      website:       p.website || null,
+      marketCap:     p.mktCap || null,
+      beta:          n(p.beta),
+      ipoDate:       p.ipoDate || null,
+
+      // Değerleme çarpanları (TTM)
+      pe:            n(r0.peRatioTTM, 1),
+      pb:            n(r0.priceToBookRatioTTM, 2),
+      ps:            n(r0.priceToSalesRatioTTM, 2),
+      evEbitda:      n(r0.enterpriseValueMultipleTTM, 1),
+      eps:           n(r0.epsTTM, 2),
+      dividendYield: pct(r0.dividendYieldTTM),
+
+      // Karlılık
+      roe:           pct(r0.returnOnEquityTTM),
+      roa:           pct(r0.returnOnAssetsTTM),
+      roic:          pct(r0.returnOnCapitalEmployedTTM),
+      grossMargin:   pct(r0.grossProfitMarginTTM),
+      operMargin:    pct(r0.operatingProfitMarginTTM),
+      netMargin:     pct(r0.netProfitMarginTTM),
+      ebitdaMargin:  pct(r0.ebitdaPerShareTTM),
+
+      // Likidite & Borç
+      currentRatio:  n(r0.currentRatioTTM, 2),
+      quickRatio:    n(r0.quickRatioTTM, 2),
+      debtToEquity:  n(r0.debtEquityRatioTTM, 2),
+      debtToAssets:  n(r0.debtRatioTTM, 2),
+      interestCover: n(r0.interestCoverageTTM, 1),
+
+      // Gelir tablosu (son dönem)
+      revenue:       i0.revenue || null,
+      grossProfit:   i0.grossProfit || null,
+      operatingIncome: i0.operatingIncome || null,
+      netIncome:     i0.netIncome || null,
+      ebitda:        i0.ebitda || null,
+      eps_reported:  n(i0.eps, 2),
+      revenueGrowth: fmtGrowth(i0.revenue, i1.revenue),
+      netIncomeGrowth: fmtGrowth(i0.netIncome, i1.netIncome),
+      reportPeriod:  i0.date || null,
+
+      // Bilanço
+      totalAssets:   b0.totalAssets || null,
+      totalDebt:     b0.totalDebt || null,
+      totalEquity:   b0.totalStockholdersEquity || null,
+      cash:          b0.cashAndCashEquivalents || null,
+      shortTermDebt: b0.shortTermDebt || null,
+      longTermDebt:  b0.longTermDebt || null,
+
+      // Nakit akışı
+      operatingCF:   cf.operatingCashFlow || null,
+      capex:         cf.capitalExpenditure || null,
+      freeCashFlow:  cf.freeCashFlow || null,
+      dividendsPaid: cf.dividendsPaid || null,
+
+      // Analist
+      analystBuy:    totalBuy,
+      analystHold:   totalHold,
+      analystSell:   totalSell,
+      analystTotal:  totalAn,
+      recommendation: recText,
+      recColor:      recCol,
+      targetHigh:    n(q0.priceAvg200, 1),
+
+      // 52 hafta
+      week52High:    n(q0.yearHigh, 2),
+      week52Low:     n(q0.yearLow, 2),
+      avgVolume:     q0.avgVolume || null,
+      sharesOut:     q0.sharesOutstanding || null,
+    });
 
   } catch(e) {
-    return res.status(500).json({ error: e.message, fundamentals: {}, news: [] });
+    return res.status(500).json({ error: e.message });
   }
-}
-
-function parseResult(s) {
-  const ks  = s.defaultKeyStatistics || {};
-  const fd  = s.financialData || {};
-  const sd  = s.summaryDetail || {};
-  const ap  = s.assetProfile || {};
-  const is0 = s.incomeStatementHistory?.incomeStatementHistory?.[0] || {};
-  const is1 = s.incomeStatementHistory?.incomeStatementHistory?.[1] || {};
-  const bs0 = s.balanceSheetHistory?.balanceSheetHistory?.[0] || {};
-  const cf0 = s.cashflowStatementHistory?.cashflowStatementHistory?.[0] || {};
-
-  const r  = (v) => v?.raw ?? v ?? null;
-  const n  = (v, d=2) => r(v) != null ? +parseFloat(r(v)).toFixed(d) : null;
-  const pct = (v, d=1) => r(v) != null ? +(r(v)*100).toFixed(d) : null;
-
-  const rev0 = r(is0.totalRevenue), rev1 = r(is1.totalRevenue);
-  const ni0  = r(is0.netIncome),    ni1  = r(is1.netIncome);
-
-  const fundamentals = {
-    pe:             n(ks.trailingPE, 1),
-    forwardPE:      n(ks.forwardPE, 1),
-    pb:             n(ks.priceToBook, 2),
-    ps:             n(ks.priceToSalesTrailing12Months, 2),
-    eps:            n(ks.trailingEps, 2),
-    forwardEps:     n(ks.forwardEps, 2),
-    roe:            pct(fd.returnOnEquity),
-    roa:            pct(fd.returnOnAssets),
-    grossMargin:    pct(fd.grossMargins),
-    operMargin:     pct(fd.operatingMargins),
-    profitMargin:   pct(fd.profitMargins),
-    revenueGrowth:  pct(fd.revenueGrowth) ?? (rev0&&rev1&&rev1!==0 ? +((rev0-rev1)/Math.abs(rev1)*100).toFixed(1) : null),
-    earningsGrowth: pct(fd.earningsGrowth) ?? (ni0&&ni1&&ni1!==0 ? +((ni0-ni1)/Math.abs(ni1)*100).toFixed(1) : null),
-    debtToEquity:   n(fd.debtToEquity, 2),
-    currentRatio:   n(fd.currentRatio, 2),
-    quickRatio:     n(fd.quickRatio, 2),
-    totalCash:      r(fd.totalCash) ?? r(bs0.cash),
-    totalDebt:      r(fd.totalDebt) ?? r(bs0.longTermDebt),
-    freeCashflow:   r(fd.freeCashflow) ?? r(cf0.freeCashflow),
-    totalRevenue:   r(is0.totalRevenue),
-    netIncome:      r(is0.netIncome),
-    operatingIncome:r(is0.operatingIncome),
-    dividendYield:  pct(sd.dividendYield),
-    dividendRate:   n(sd.dividendRate, 2),
-    payoutRatio:    pct(ks.payoutRatio),
-    targetPrice:    n(fd.targetMeanPrice, 1),
-    targetHigh:     n(fd.targetHighPrice, 1),
-    targetLow:      n(fd.targetLowPrice, 1),
-    recommendation: fd.recommendationKey ?? null,
-    analystCount:   r(fd.numberOfAnalystOpinions),
-    sector:         ap.sector ?? null,
-    industry:       ap.industry ?? null,
-    employees:      ap.fullTimeEmployees ?? null,
-    marketCap:      r(sd.marketCap),
-    beta:           n(ks.beta, 2),
-    week52High:     n(ks.fiftyTwoWeekHigh, 2),
-    week52Low:      n(ks.fiftyTwoWeekLow, 2),
-  };
-
-  return { fundamentals, news: [] };
 }
