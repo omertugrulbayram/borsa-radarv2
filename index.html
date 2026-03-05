@@ -914,6 +914,28 @@ function renderAI(ai) {
       <div class="ind-card"><div class="ind-label">DİRENÇ</div><div class="ind-val up">${fmtNum(ai.key_levels.direnc)}</div></div>
     </div>` : ''}
 
+    ${ai.fundamentals_raw || ai.balance_sheet ? `
+    <div style="margin-bottom:10px">
+      <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)">📊 BİLANÇO ANALİZİ</div>
+      ${ai.fundamentals_raw ? `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px">
+        ${ai.fundamentals_raw.pe != null ? `<div class="ind-card"><div class="ind-label">F/K</div><div class="ind-val" style="font-size:13px">${parseFloat(ai.fundamentals_raw.pe).toFixed(1)}x</div></div>` : ''}
+        ${ai.fundamentals_raw.pb != null ? `<div class="ind-card"><div class="ind-label">PD/DD</div><div class="ind-val" style="font-size:13px">${parseFloat(ai.fundamentals_raw.pb).toFixed(2)}x</div></div>` : ''}
+        ${ai.fundamentals_raw.eps != null ? `<div class="ind-card"><div class="ind-label">EPS</div><div class="ind-val" style="font-size:13px">${parseFloat(ai.fundamentals_raw.eps).toFixed(2)} TL</div></div>` : ''}
+        ${ai.fundamentals_raw.roe != null ? `<div class="ind-card"><div class="ind-label">ROE</div><div class="ind-val ${parseFloat(ai.fundamentals_raw.roe)>15?'up':'down'}" style="font-size:13px">%${ai.fundamentals_raw.roe}</div></div>` : ''}
+        ${ai.fundamentals_raw.revenueGrowth != null ? `<div class="ind-card"><div class="ind-label">GELİR BÜY.</div><div class="ind-val ${parseFloat(ai.fundamentals_raw.revenueGrowth)>0?'up':'down'}" style="font-size:13px">%${ai.fundamentals_raw.revenueGrowth}</div></div>` : ''}
+        ${ai.fundamentals_raw.targetPrice != null ? `<div class="ind-card"><div class="ind-label">HEDEF FİYAT</div><div class="ind-val up" style="font-size:13px">${parseFloat(ai.fundamentals_raw.targetPrice).toFixed(1)} TL</div></div>` : ''}
+      </div>` : ''}
+      ${ai.balance_sheet ? `
+      <div style="font-size:10px;line-height:1.8;color:var(--text)">
+        ${ai.balance_sheet.pe_comment ? `<div style="padding:3px 0;border-bottom:1px solid rgba(30,30,46,0.5)"><span style="color:var(--muted);font-family:var(--mono);font-size:9px">F/K </span>${ai.balance_sheet.pe_comment}</div>` : ''}
+        ${ai.balance_sheet.pb_comment ? `<div style="padding:3px 0;border-bottom:1px solid rgba(30,30,46,0.5)"><span style="color:var(--muted);font-family:var(--mono);font-size:9px">PD/DD </span>${ai.balance_sheet.pb_comment}</div>` : ''}
+        ${ai.balance_sheet.roe_comment ? `<div style="padding:3px 0;border-bottom:1px solid rgba(30,30,46,0.5)"><span style="color:var(--muted);font-family:var(--mono);font-size:9px">ROE </span>${ai.balance_sheet.roe_comment}</div>` : ''}
+        ${ai.balance_sheet.debt_comment ? `<div style="padding:3px 0;border-bottom:1px solid rgba(30,30,46,0.5)"><span style="color:var(--muted);font-family:var(--mono);font-size:9px">BORÇ </span>${ai.balance_sheet.debt_comment}</div>` : ''}
+        ${ai.balance_sheet.growth_comment ? `<div style="padding:3px 0"><span style="color:var(--muted);font-family:var(--mono);font-size:9px">BÜYÜME </span>${ai.balance_sheet.growth_comment}</div>` : ''}
+      </div>` : ''}
+    </div>` : ''}
+
     ${risks ? `<div style="margin-bottom:8px"><div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:4px">RİSKLER</div>${risks}</div>` : ''}
     ${opps  ? `<div><div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:4px">FIRSATLAR</div>${opps}</div>` : ''}
   </div>`;
@@ -936,7 +958,7 @@ async function loadNews(code, name) {
     if (!Array.isArray(news)) throw new Error('invalid response');
     content.innerHTML = news.map(n => {
       const col = n.sentiment==='POZİTİF' ? 'var(--up)' : n.sentiment==='NEGATİF' ? 'var(--down)' : 'var(--yellow)';
-      return `<div class="news-item">
+      return `<div class="news-item" onclick="window.open('${n.link||'#'}','_blank')" style="cursor:pointer">
         <div class="news-headline"><span class="news-sentiment" style="background:${col}"></span>${n.headline}</div>
         <div class="news-meta">${n.source} &nbsp;·&nbsp; ${n.time} &nbsp;·&nbsp; <span style="color:${col}">${n.sentiment}</span></div>
       </div>`;
