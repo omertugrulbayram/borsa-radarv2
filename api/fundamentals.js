@@ -25,14 +25,14 @@ export default async function handler(req, res) {
       fetch(`${base}/quote/${ticker}?apikey=${key}`).then(r=>r.json()),
     ]);
 
-    const p  = profile.value?.[0]  || {};
-    const r0 = ratios.value?.[0]   || {};
-    const i0 = income.value?.[0]   || {};
-    const i1 = income.value?.[1]   || {};
-    const b0 = balance.value?.[0]  || {};
-    const cf = cashflow.value?.[0] || {};
-    const an = analyst.value       || [];
-    const q0 = quote.value?.[0]    || {};
+    const p  = Array.isArray(profile.value)  ? profile.value[0]  || {} : {};
+    const r0 = Array.isArray(ratios.value)   ? ratios.value[0]   || {} : {};
+    const i0 = Array.isArray(income.value)   ? income.value[0]   || {} : {};
+    const i1 = Array.isArray(income.value)   ? income.value[1]   || {} : {};
+    const b0 = Array.isArray(balance.value)  ? balance.value[0]  || {} : {};
+    const cf = Array.isArray(cashflow.value) ? cashflow.value[0] || {} : {};
+    const an = Array.isArray(analyst.value) ? analyst.value : [];
+    const q0 = Array.isArray(quote.value)    ? quote.value[0]    || {} : {};
 
     const n = (v, d=2) => v != null && !isNaN(v) ? +parseFloat(v).toFixed(d) : null;
     const pct = (v, d=1) => v != null && !isNaN(v) ? +(v*100).toFixed(d) : null;
