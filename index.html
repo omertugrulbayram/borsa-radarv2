@@ -369,12 +369,10 @@ body {
   <!-- RIGHT: AI + News -->
   <div class="right-panel">
     <div class="rp-tabs">
-      <div class="rp-tab active" style="cursor:default;flex:1;text-align:center">🤖 AI + BİLANÇO ANALİZİ</div>
+      <div class="rp-tab active" style="cursor:default;flex:1;text-align:center">📊 TEMEL ANALİZ</div>
     </div>
     <div class="rp-content" id="rpContent">
-      <div class="ai-panel">
-        <div style="padding:30px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--muted)">Hisse seçin → AI analizi başlasın</div>
-      </div>
+      <div style="padding:30px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--muted)">Hisse seçin</div>
     </div>
   </div>
 </div>
@@ -416,7 +414,7 @@ let currentCode = null, currentTF = '1G', currentTab = 'ai';
 let priceChart = null;
 let watchlist = JSON.parse(localStorage.getItem('br_watchlist') || '["THYAO","GARAN","AKBNK","BIMAS","ASELS"]');
 let stockCache = {};
-let aiCache = {};
+
 
 // ================================================================
 // CLOCK + MARKET STATUS
@@ -632,7 +630,7 @@ async function selectStock(code, name) {
   `;
 
   await loadChart(code, currentTF);
-  loadAI(code, name, s);
+  loadFundamentals(code);
 }
 
 // ================================================================
@@ -838,133 +836,89 @@ function calcIndicators(prices) {
 // ================================================================
 // AI ANALİZ (Claude API)
 // ================================================================
-async function loadAI(code, name, stockData) {
-  if (currentTab !== 'ai') return;
+// TEMEL ANALİZ (Yahoo Finance)
+// ================================================================
+let fundCache = {};
 
-  const content = document.getElementById('rpContent');
-  content.innerHTML = `<div class="ai-loading"><div class="ai-spinner"></div><div>AI ANALİZİ HAZIRLANIYOR...</div></div>`;
-
-  // Cache check
-  const cacheKey = `${code}_${new Date().toDateString()}`;
-  if (aiCache[cacheKey]) { renderAI(aiCache[cacheKey]); return; }
-
-  const price = stockData.last || stockData.close || 0;
-  const chg   = stockData.change_rate || stockData.changeRate || 0;
-  const vol   = stockData.volume || stockData.vol || 0;
-
+async function loadFundamentals(code) {
+  const el = document.getElementById('rpContent');
+  el.innerHTML = `<div class="ai-loading"><div class="ai-spinner"></div><div>VERİ YÜKLENİYOR...</div></div>`;
+  if (fundCache[code]) { renderFund(fundCache[code], code); return; }
   try {
-    const res = await fetch('/api/ai', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, name, price, chg, type: 'analysis' })
-    });
-    const ai = await res.json();
-    if (ai.error) throw new Error(ai.error);
-    aiCache[cacheKey] = ai;
-    renderAI(ai);
+    const r = await fetch(`/api/fundamentals?ticker=${code}.IS`);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    fundCache[code] = d;
+    renderFund(d, code);
   } catch(e) {
-    document.getElementById('rpContent').innerHTML = `<div class="ai-panel"><div style="padding:20px;font-family:var(--mono);font-size:10px;color:var(--muted)">AI analizi yüklenemedi: ${e.message}</div></div>`;
+    el.innerHTML = `<div style="padding:20px;font-family:var(--mono);font-size:11px;color:var(--muted)">Veri yüklenemedi: ${e.message}</div>`;
   }
 }
 
-function renderAI(ai) {
-  const score = ai.sentiment_score || 50;
-  const sentiment = ai.sentiment || 'NÖTR';
-  const signal = ai.signal || 'TUT';
-  const col = score >= 65 ? 'var(--up)' : score <= 35 ? 'var(--down)' : 'var(--yellow)';
-  const sigCol = signal.includes('AL') ? 'var(--up)' : signal.includes('SAT') ? 'var(--down)' : 'var(--yellow)';
+function renderFund(d, code) {
+  const row = (label, val, colorFn) => {
+    if (val == null) return '';
+    const col = colorFn ? colorFn(val) : 'var(--text)';
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(30,30,46,0.5)">
+      <span style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px">${label}</span>
+      <span style="font-family:var(--mono);font-size:12px;font-weight:500;color:${col}">${val}</span>
+    </div>`;
+  };
+  const fmtB = v => v == null ? null : v >= 1e9 ? (v/1e9).toFixed(2)+'Mr TL' : v >= 1e6 ? (v/1e6).toFixed(1)+'M TL' : v.toFixed(0)+' TL';
+  const recMap = { buy:'AL', hold:'TUT', sell:'SAT', strongbuy:'GÜÇLÜ AL', strongsell:'GÜÇLÜ SAT' };
+  const recCol = { buy:'var(--up)', hold:'var(--yellow)', sell:'var(--down)', strongbuy:'var(--up)', strongsell:'var(--down)' };
 
-  const bars = [
-    { label:'TEKNİK', val:ai.technical_score||50, color:'var(--blue)' },
-    { label:'TEMEL', val:ai.fundamental_score||50, color:'var(--purple)' },
-    { label:'MOMENTUM', val:ai.momentum_score||50, color:'var(--yellow)' },
-  ];
+  document.getElementById('rpContent').innerHTML = `<div style="padding:10px 12px">
 
-  const risks = (ai.risks||[]).map(r=>`<div style="padding:4px 0;font-size:10px;color:var(--muted);border-bottom:1px solid var(--border);display:flex;gap:6px"><span style="color:var(--down)">▼</span>${r}</div>`).join('');
-  const opps  = (ai.opportunities||[]).map(o=>`<div style="padding:4px 0;font-size:10px;color:var(--muted);border-bottom:1px solid var(--border);display:flex;gap:6px"><span style="color:var(--up)">▲</span>${o}</div>`).join('');
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:2px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)">DEĞERLEME</div>
+    ${row('F/K (Trailing)', d.pe != null ? d.pe+'x' : null, v => parseFloat(v)<10?'var(--up)':parseFloat(v)>25?'var(--down)':'var(--yellow)')}
+    ${row('F/K (Forward)', d.forwardPE != null ? d.forwardPE+'x' : null)}
+    ${row('PD/DD', d.pb != null ? d.pb+'x' : null, v => parseFloat(v)<1.5?'var(--up)':parseFloat(v)>3?'var(--down)':'var(--text)')}
+    ${row('F/S', d.ps != null ? d.ps+'x' : null)}
+    ${row('EPS', d.eps != null ? d.eps+' TL' : null)}
+    ${row('Forward EPS', d.forwardEps != null ? d.forwardEps+' TL' : null)}
 
-  document.getElementById('rpContent').innerHTML = `
-  <div class="ai-panel">
-    <div class="ai-score-card">
-      <div class="ai-score-label">DUYGU SKORU</div>
-      <div class="ai-score-gauge">
-        <div class="ai-score-num" style="color:${col}">${score}</div>
-        <div class="ai-score-desc">
-          <div class="ai-sentiment-label" style="color:${col}">${sentiment}</div>
-          <div class="ai-sentiment-sub">Sinyal: <span style="color:${sigCol};font-weight:600">${signal}</span></div>
-        </div>
-      </div>
-    </div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:2px;margin:10px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border)">KARLILIK</div>
+    ${row('ROE', d.roe != null ? '%'+d.roe : null, v => parseFloat(v)>20?'var(--up)':parseFloat(v)<5?'var(--down)':'var(--text)')}
+    ${row('ROA', d.roa != null ? '%'+d.roa : null, v => parseFloat(v)>10?'var(--up)':'var(--text)')}
+    ${row('Brüt Kar Marjı', d.grossMargin != null ? '%'+d.grossMargin : null, v => parseFloat(v)>30?'var(--up)':'var(--text)')}
+    ${row('Faaliyet Marjı', d.operMargin != null ? '%'+d.operMargin : null, v => parseFloat(v)>15?'var(--up)':parseFloat(v)<0?'var(--down)':'var(--text)')}
+    ${row('Net Kar Marjı', d.profitMargin != null ? '%'+d.profitMargin : null, v => parseFloat(v)>10?'var(--up)':parseFloat(v)<0?'var(--down)':'var(--text)')}
 
-    <div class="ai-bars">
-      ${bars.map(b=>`
-      <div class="ai-bar-row">
-        <div class="ai-bar-label">${b.label}</div>
-        <div class="ai-bar-track"><div class="ai-bar-fill" style="width:${b.val}%;background:${b.color}"></div></div>
-        <div class="ai-bar-val">${b.val}</div>
-      </div>`).join('')}
-    </div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:2px;margin:10px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border)">BÜYÜME</div>
+    ${row('Gelir Büyümesi', d.revenueGrowth != null ? '%'+d.revenueGrowth : null, v => parseFloat(v)>0?'var(--up)':'var(--down)')}
+    ${row('Kar Büyümesi', d.earningsGrowth != null ? '%'+d.earningsGrowth : null, v => parseFloat(v)>0?'var(--up)':'var(--down)')}
 
-    <div class="ai-summary">${ai.summary || '—'}</div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:2px;margin:10px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border)">BİLANÇO SAĞLIĞI</div>
+    ${row('Borç/Özkaynak', d.debtToEquity != null ? d.debtToEquity+'x' : null, v => parseFloat(v)<1?'var(--up)':parseFloat(v)>3?'var(--down)':'var(--yellow)')}
+    ${row('Cari Oran', d.currentRatio != null ? d.currentRatio+'x' : null, v => parseFloat(v)>2?'var(--up)':parseFloat(v)<1?'var(--down)':'var(--yellow)')}
+    ${row('Hızlı Oran', d.quickRatio != null ? d.quickRatio+'x' : null)}
+    ${row('Nakit', fmtB(d.totalCash))}
+    ${row('Toplam Borç', fmtB(d.totalDebt))}
+    ${row('Serbest Nakit Akışı', fmtB(d.freeCashflow), v => v.includes('-')?'var(--down)':'var(--up)')}
 
-    ${ai.key_levels ? `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px">
-      <div class="ind-card"><div class="ind-label">DESTEK</div><div class="ind-val down">${fmtNum(ai.key_levels.destek)}</div></div>
-      <div class="ind-card"><div class="ind-label">DİRENÇ</div><div class="ind-val up">${fmtNum(ai.key_levels.direnc)}</div></div>
-    </div>` : ''}
+    ${d.dividendYield ? `
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:2px;margin:10px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border)">TEMETTÜ</div>
+    ${row('Temettü Verimi', '%'+d.dividendYield, v => parseFloat(v)>5?'var(--up)':'var(--text)')}
+    ${row('Temettü/Hisse', d.dividendRate != null ? d.dividendRate+' TL' : null)}
+    ${row('Dağıtım Oranı', d.payoutRatio != null ? '%'+d.payoutRatio : null)}
+    ` : ''}
 
-    ${ai.fundamentals_raw || ai.balance_sheet ? `
-    <div style="margin-bottom:10px">
-      <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)">📊 BİLANÇO ANALİZİ</div>
-      ${ai.fundamentals_raw ? `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px">
-        ${ai.fundamentals_raw.pe != null ? `<div class="ind-card"><div class="ind-label">F/K</div><div class="ind-val" style="font-size:13px">${parseFloat(ai.fundamentals_raw.pe).toFixed(1)}x</div></div>` : ''}
-        ${ai.fundamentals_raw.pb != null ? `<div class="ind-card"><div class="ind-label">PD/DD</div><div class="ind-val" style="font-size:13px">${parseFloat(ai.fundamentals_raw.pb).toFixed(2)}x</div></div>` : ''}
-        ${ai.fundamentals_raw.eps != null ? `<div class="ind-card"><div class="ind-label">EPS</div><div class="ind-val" style="font-size:13px">${parseFloat(ai.fundamentals_raw.eps).toFixed(2)} TL</div></div>` : ''}
-        ${ai.fundamentals_raw.roe != null ? `<div class="ind-card"><div class="ind-label">ROE</div><div class="ind-val ${parseFloat(ai.fundamentals_raw.roe)>15?'up':'down'}" style="font-size:13px">%${ai.fundamentals_raw.roe}</div></div>` : ''}
-        ${ai.fundamentals_raw.revenueGrowth != null ? `<div class="ind-card"><div class="ind-label">GELİR BÜY.</div><div class="ind-val ${parseFloat(ai.fundamentals_raw.revenueGrowth)>0?'up':'down'}" style="font-size:13px">%${ai.fundamentals_raw.revenueGrowth}</div></div>` : ''}
-        ${ai.fundamentals_raw.targetPrice != null ? `<div class="ind-card"><div class="ind-label">HEDEF FİYAT</div><div class="ind-val up" style="font-size:13px">${parseFloat(ai.fundamentals_raw.targetPrice).toFixed(1)} TL</div></div>` : ''}
-      </div>` : ''}
-      ${ai.balance_sheet ? `
-      <div style="font-size:10px;line-height:1.8;color:var(--text)">
-        ${ai.balance_sheet.pe_comment ? `<div style="padding:3px 0;border-bottom:1px solid rgba(30,30,46,0.5)"><span style="color:var(--muted);font-family:var(--mono);font-size:9px">F/K </span>${ai.balance_sheet.pe_comment}</div>` : ''}
-        ${ai.balance_sheet.pb_comment ? `<div style="padding:3px 0;border-bottom:1px solid rgba(30,30,46,0.5)"><span style="color:var(--muted);font-family:var(--mono);font-size:9px">PD/DD </span>${ai.balance_sheet.pb_comment}</div>` : ''}
-        ${ai.balance_sheet.roe_comment ? `<div style="padding:3px 0;border-bottom:1px solid rgba(30,30,46,0.5)"><span style="color:var(--muted);font-family:var(--mono);font-size:9px">ROE </span>${ai.balance_sheet.roe_comment}</div>` : ''}
-        ${ai.balance_sheet.debt_comment ? `<div style="padding:3px 0;border-bottom:1px solid rgba(30,30,46,0.5)"><span style="color:var(--muted);font-family:var(--mono);font-size:9px">BORÇ </span>${ai.balance_sheet.debt_comment}</div>` : ''}
-        ${ai.balance_sheet.growth_comment ? `<div style="padding:3px 0"><span style="color:var(--muted);font-family:var(--mono);font-size:9px">BÜYÜME </span>${ai.balance_sheet.growth_comment}</div>` : ''}
-      </div>` : ''}
-    </div>` : ''}
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:2px;margin:10px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border)">ANALİST</div>
+    ${d.recommendation ? `<div style="padding:8px 0;border-bottom:1px solid rgba(30,30,46,0.5);display:flex;justify-content:space-between"><span style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px">TAVSİYE</span><span style="font-family:var(--mono);font-size:12px;font-weight:600;color:${recCol[d.recommendation]||'var(--text)'}">${recMap[d.recommendation]||d.recommendation.toUpperCase()} (${d.analystCount||'?'} analist)</span></div>` : ''}
+    ${row('Hedef Fiyat (Ort.)', d.targetPrice != null ? d.targetPrice+' TL' : null, v => 'var(--up)')}
+    ${row('Hedef Yüksek', d.targetHigh != null ? d.targetHigh+' TL' : null)}
+    ${row('Hedef Düşük', d.targetLow != null ? d.targetLow+' TL' : null)}
 
-    ${risks ? `<div style="margin-bottom:8px"><div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:4px">RİSKLER</div>${risks}</div>` : ''}
-    ${opps  ? `<div><div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:4px">FIRSATLAR</div>${opps}</div>` : ''}
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:2px;margin:10px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border)">DİĞER</div>
+    ${row('Beta', d.beta)}
+    ${row('52H Yüksek', d.week52High != null ? d.week52High+' TL' : null)}
+    ${row('52H Düşük', d.week52Low != null ? d.week52Low+' TL' : null)}
+    ${row('Piyasa Değeri', fmtB(d.marketCap))}
+    ${d.sector ? `${row('Sektör', d.sector)}` : ''}
+    ${d.employees ? `${row('Çalışan', d.employees.toLocaleString('tr-TR'))}` : ''}
+
   </div>`;
-}
-
-// ================================================================
-// NEWS TAB
-// ================================================================
-async function loadNews(code, name) {
-  const content = document.getElementById('rpContent');
-  content.innerHTML = `<div class="ai-loading"><div class="ai-spinner"></div><div>HABERLER YÜKLENIYOR...</div></div>`;
-
-  try {
-    const res = await fetch('/api/ai', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, name, type: 'news' })
-    });
-    const news = await res.json();
-    if (!Array.isArray(news)) throw new Error('invalid response');
-    content.innerHTML = news.map(n => {
-      const col = n.sentiment==='POZİTİF' ? 'var(--up)' : n.sentiment==='NEGATİF' ? 'var(--down)' : 'var(--yellow)';
-      return `<div class="news-item" onclick="window.open('${n.link||'#'}','_blank')" style="cursor:pointer">
-        <div class="news-headline"><span class="news-sentiment" style="background:${col}"></span>${n.headline}</div>
-        <div class="news-meta">${n.source} &nbsp;·&nbsp; ${n.time} &nbsp;·&nbsp; <span style="color:${col}">${n.sentiment}</span></div>
-      </div>`;
-    }).join('');
-  } catch(e) {
-    content.innerHTML = `<div style="padding:20px;font-family:var(--mono);font-size:10px;color:var(--muted)">Haberler yüklenemedi.</div>`;
-  }
 }
 
 // ================================================================
