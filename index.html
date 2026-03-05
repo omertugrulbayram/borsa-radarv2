@@ -369,8 +369,7 @@ body {
   <!-- RIGHT: AI + News -->
   <div class="right-panel">
     <div class="rp-tabs">
-      <div class="rp-tab active" id="tab-ai" onclick="switchTab('ai')">🤖 AI ANALİZ</div>
-      <div class="rp-tab" id="tab-news" onclick="switchTab('news')">📰 HABERLER</div>
+      <div class="rp-tab active" style="cursor:default;flex:1;text-align:center">🤖 AI + BİLANÇO ANALİZİ</div>
     </div>
     <div class="rp-content" id="rpContent">
       <div class="ai-panel">
@@ -997,16 +996,7 @@ document.addEventListener('click', e => {
 // ================================================================
 // TAB SWITCH
 // ================================================================
-function switchTab(tab) {
-  currentTab = tab;
-  document.getElementById('tab-ai').classList.toggle('active', tab==='ai');
-  document.getElementById('tab-news').classList.toggle('active', tab==='news');
-  if (!currentCode) return;
-  const name = findName(currentCode);
-  const s = stockCache[currentCode] || {};
-  if (tab==='ai') loadAI(currentCode, name, s);
-  else loadNews(currentCode, name);
-}
+// switchTab removed
 
 // ================================================================
 // TIMEFRAME
