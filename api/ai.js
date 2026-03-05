@@ -4,56 +4,30 @@ const YAHOO_HEADERS = {
   'Referer': 'https://finance.yahoo.com',
 };
 
-async function yahooFetch(url) {
-  const r = await fetch(url, { headers: YAHOO_HEADERS });
-  if (!r.ok) throw new Error(`Yahoo ${r.status}`);
-  return r.json();
-}
-
-async function claudeCall(prompt, maxTokens = 800) {
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': process.env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: maxTokens,
-      messages: [{ role: 'user', content: prompt }]
-    })
-  });
-  const d = await r.json();
-  const text = d.content?.[0]?.text || '';
-  // JSON'u güvenli çıkar
-  const match = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
-  return match ? match[0] : text;
-}
-
 async function getFundamentals(ticker) {
   try {
-    const qData = await yahooFetch(
-      `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=defaultKeyStatistics,financialData`
+    const r = await fetch(
+      `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=defaultKeyStatistics,financialData`,
+      { headers: YAHOO_HEADERS }
     );
-    const result = qData?.quoteSummary?.result?.[0] || {};
-    const ks = result.defaultKeyStatistics || {};
-    const fd = result.financialData || {};
+    const d = await r.json();
+    const ks = d?.quoteSummary?.result?.[0]?.defaultKeyStatistics || {};
+    const fd = d?.quoteSummary?.result?.[0]?.financialData || {};
     return {
       pe:             ks.trailingPE?.raw ?? null,
       pb:             ks.priceToBook?.raw ?? null,
       eps:            ks.trailingEps?.raw ?? null,
-      roe:            fd.returnOnEquity?.raw != null ? (fd.returnOnEquity.raw * 100).toFixed(1) : null,
+      roe:            fd.returnOnEquity?.raw != null ? +(fd.returnOnEquity.raw * 100).toFixed(1) : null,
       debtToEquity:   fd.debtToEquity?.raw ?? null,
       currentRatio:   fd.currentRatio?.raw ?? null,
-      revenueGrowth:  fd.revenueGrowth?.raw != null ? (fd.revenueGrowth.raw * 100).toFixed(1) : null,
-      earningsGrowth: fd.earningsGrowth?.raw != null ? (fd.earningsGrowth.raw * 100).toFixed(1) : null,
+      revenueGrowth:  fd.revenueGrowth?.raw != null ? +(fd.revenueGrowth.raw * 100).toFixed(1) : null,
+      earningsGrowth: fd.earningsGrowth?.raw != null ? +(fd.earningsGrowth.raw * 100).toFixed(1) : null,
       targetPrice:    fd.targetMeanPrice?.raw ?? null,
       recommendation: fd.recommendationKey ?? null,
+      grossMargins:   fd.grossMargins?.raw != null ? +(fd.grossMargins.raw * 100).toFixed(1) : null,
+      operMargins:    fd.operatingMargins?.raw != null ? +(fd.operatingMargins.raw * 100).toFixed(1) : null,
     };
-  } catch(e) {
-    return {};
-  }
+  } catch(e) { return {}; }
 }
 
 export default async function handler(req, res) {
@@ -63,70 +37,68 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { code, name, price, chg, type = 'analysis' } = req.body;
+  const { code, name, price, chg } = req.body;
   const ticker = code + '.IS';
 
-  // ── HABERLER: Claude gerçek piyasa bilgisiyle üretsin ─────
-  if (type === 'news') {
-    try {
-      const fund = await getFundamentals(ticker);
-      const fundCtx = fund.pe
-        ? `F/K:${parseFloat(fund.pe).toFixed(1)}, PD/DD:${parseFloat(fund.pb||0).toFixed(2)}, ROE:%${fund.roe}, Hedef:${fund.targetPrice?.toFixed(1)||'?'}TL`
-        : '';
+  try {
+    const fund = await getFundamentals(ticker);
 
-      const raw = await claudeCall(
-        `Sen Borsa İstanbul uzmanı bir finans analistisin. ${code} (${name}) hissesi hakkında ${new Date().toLocaleDateString('tr-TR')} tarihi itibarıyla gerçekçi ve bilgilendirici 6 haber/analiz başlığı yaz.
-${fundCtx ? `Mevcut veriler: Fiyat ${price}TL, Değişim %${chg}, ${fundCtx}` : `Fiyat: ${price}TL, Değişim: %${chg}`}
+    const fundLine = [
+      fund.pe != null      && `F/K:${parseFloat(fund.pe).toFixed(1)}`,
+      fund.pb != null      && `PD/DD:${parseFloat(fund.pb).toFixed(2)}`,
+      fund.eps != null     && `EPS:${parseFloat(fund.eps).toFixed(2)}TL`,
+      fund.roe != null     && `ROE:%${fund.roe}`,
+      fund.debtToEquity != null && `D/E:${parseFloat(fund.debtToEquity).toFixed(2)}`,
+      fund.currentRatio != null && `CR:${parseFloat(fund.currentRatio).toFixed(2)}`,
+      fund.revenueGrowth != null && `GelirBuy:%${fund.revenueGrowth}`,
+      fund.targetPrice != null  && `Hedef:${parseFloat(fund.targetPrice).toFixed(1)}TL`,
+    ].filter(Boolean).join(' | ');
 
-Haberler şirkete özel olsun: finansal sonuçlar, yatırım planları, sektör gelişmeleri, analist görüşleri, teknik seviyeler gibi konular.
-SADECE JSON array döndür, başka hiçbir şey yazma:
-[
-  {"headline":"başlık","sentiment":"POZİTİF","time":"2 saat önce","source":"Borsa Gündem"},
-  {"headline":"başlık","sentiment":"NÖTR","time":"4 saat önce","source":"Reuters TR"},
-  {"headline":"başlık","sentiment":"NEGATİF","time":"6 saat önce","source":"Bloomberg HT"},
-  {"headline":"başlık","sentiment":"POZİTİF","time":"1 gün önce","source":"Dünya Gazetesi"},
-  {"headline":"başlık","sentiment":"NÖTR","time":"1 gün önce","source":"Milliyet"},
-  {"headline":"başlık","sentiment":"POZİTİF","time":"2 gün önce","source":"Ekonomim"}
-]`, 600);
+    const prompt = `${code} (${name}) analiz et. Fiyat:${price}TL Degisim:%${chg}${fundLine ? '\n' + fundLine : ''}
+Asagidaki JSON formatini AYNEN doldur, fazladan hicbir karakter ekleme:
+{"s":75,"sentiment":"OLUMLU","t":70,"f":65,"m":72,"summary":"buraya 2 cumle yaz","signal":"AL","destek":${(price*0.95).toFixed(1)},"direnc":${(price*1.05).toFixed(1)},"pe_yorum":"buraya yaz","roe_yorum":"buraya yaz","borc_yorum":"buraya yaz","buyume_yorum":"buraya yaz","risk1":"buraya yaz","risk2":"buraya yaz","firsat1":"buraya yaz","firsat2":"buraya yaz"}`;
 
-      const news = JSON.parse(raw);
-      return res.status(200).json(news.map(n => ({
-        ...n,
-        link: `https://finance.yahoo.com/quote/${ticker}/news`
-      })));
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
 
-    } catch(e) {
-      return res.status(500).json([{
-        headline: `${code} haber verisi yüklenemedi`,
-        sentiment: 'NÖTR', time: 'Şimdi', source: 'Hata', link: '#'
-      }]);
-    }
+    const d = await r.json();
+    const text = d.content?.[0]?.text || '';
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('JSON bulunamadı');
+    const ai = JSON.parse(match[0]);
+
+    return res.status(200).json({
+      sentiment_score: ai.s || 50,
+      sentiment: ai.sentiment || 'NÖTR',
+      technical_score: ai.t || 50,
+      fundamental_score: ai.f || 50,
+      momentum_score: ai.m || 50,
+      summary: ai.summary || '',
+      signal: ai.signal || 'TUT',
+      key_levels: { destek: ai.destek, direnc: ai.direnc },
+      balance_sheet: {
+        pe_comment:     ai.pe_yorum,
+        roe_comment:    ai.roe_yorum,
+        debt_comment:   ai.borc_yorum,
+        growth_comment: ai.buyume_yorum,
+      },
+      risks: [ai.risk1, ai.risk2].filter(Boolean),
+      opportunities: [ai.firsat1, ai.firsat2].filter(Boolean),
+      fundamentals_raw: Object.keys(fund).length ? fund : undefined,
+    });
+
+  } catch(e) {
+    return res.status(500).json({ error: e.message });
   }
-
-  // ── AI + BİLANÇO ANALİZİ ──────────────────────────────────
-  if (type === 'analysis') {
-    try {
-      const fund = await getFundamentals(ticker);
-
-      const fundStr = Object.keys(fund).length
-        ? `\nGerçek Temel Veriler: F/K=${fund.pe!=null?parseFloat(fund.pe).toFixed(1):'?'}, PD/DD=${fund.pb!=null?parseFloat(fund.pb).toFixed(2):'?'}, EPS=${fund.eps!=null?parseFloat(fund.eps).toFixed(2):'?'}TL, ROE=%${fund.roe||'?'}, Borç/Özkaynak=${fund.debtToEquity!=null?parseFloat(fund.debtToEquity).toFixed(2):'?'}, Cari Oran=${fund.currentRatio!=null?parseFloat(fund.currentRatio).toFixed(2):'?'}, Gelir Büyümesi=%${fund.revenueGrowth||'?'}, Kar Büyümesi=%${fund.earningsGrowth||'?'}, Analist Hedef=${fund.targetPrice!=null?parseFloat(fund.targetPrice).toFixed(1):'?'}TL, Tavsiye=${fund.recommendation||'?'}`
-        : '';
-
-      const raw = await claudeCall(
-        `Türk borsa analisti olarak ${code} (${name}) hissesini teknik VE temel analiz et.
-Fiyat: ${price}TL | Günlük Değişim: %${chg}${fundStr}
-
-SADECE aşağıdaki formatta geçerli JSON döndür, başka hiçbir şey yazma:
-{"sentiment_score":75,"sentiment":"OLUMLU","technical_score":70,"fundamental_score":65,"momentum_score":72,"summary":"3-4 cümle kapsamlı analiz özeti","signal":"AL","key_levels":{"destek":${(price*0.95).toFixed(1)},"direnc":${(price*1.05).toFixed(1)}},"balance_sheet":{"pe_comment":"F/K değerlendirmesi","pb_comment":"PD/DD değerlendirmesi","roe_comment":"ROE değerlendirmesi","debt_comment":"Borçluluk değerlendirmesi","growth_comment":"Büyüme değerlendirmesi"},"risks":["risk1","risk2","risk3"],"opportunities":["firsat1","firsat2","firsat3"]}`, 900);
-
-      const ai = JSON.parse(raw);
-      if (Object.keys(fund).length) ai.fundamentals_raw = fund;
-      return res.status(200).json(ai);
-
-    } catch(e) {
-      return res.status(500).json({ error: e.message });
-    }
-  }
-
-  return res.status(400).json({ error: 'Unknown type' });
 }
