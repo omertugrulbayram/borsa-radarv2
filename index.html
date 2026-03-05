@@ -916,7 +916,7 @@ function calcIndicators(prices, highs, lows) {
 
   // Özet sinyal skoru → teknik sekmesini güncelle
   lastIndicatorArgs = [prices, highs, lows, rsi, macd, stoch, willr, cci, ma20, ma50, ma200, boll, last, atr];
-  if (currentRpTab === 'teknik') updateTechnicalPanel(...lastIndicatorArgs);
+  updateTechnicalPanel(...lastIndicatorArgs);
 }
 
 function updateTechnicalPanel(prices, highs, lows, rsi, macd, stoch, willr, cci, ma20, ma50, ma200, boll, last, atr) {
@@ -1002,8 +1002,11 @@ let currentRpTab = 'teknik';
 let lastIndicatorArgs = null;
 
 function loadFundamentals(code) {
-  // Nothing to load — teknik panel fills after calcIndicators
-  document.getElementById('rpContent').innerHTML = '<div style="padding:30px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--muted)">GRAFİK YÜKLENİYOR...</div>';
+  // Panel is filled by updateTechnicalPanel() after calcIndicators runs
+  // Only show placeholder if we don't have cached args yet
+  if (!lastIndicatorArgs) {
+    document.getElementById('rpContent').innerHTML = '<div style="padding:30px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--muted)">GRAFİK YÜKLENİYOR...</div>';
+  }
 }
 
 // ================================================================
