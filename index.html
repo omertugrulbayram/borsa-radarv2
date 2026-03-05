@@ -377,9 +377,7 @@ body {
   <!-- RIGHT: Tabs -->
   <div class="right-panel">
     <div class="rp-tabs">
-      <div class="rp-tab active" id="tab-teknik" onclick="switchRpTab('teknik')">📈 TEKNİK</div>
-      <div class="rp-tab" id="tab-temel" onclick="switchRpTab('temel')">📊 TEMEL</div>
-      <div class="rp-tab" id="tab-haberler" onclick="switchRpTab('haberler')">📰 HABERLER</div>
+      <div class="rp-tab active" style="cursor:default;flex:1;text-align:center">📈 TEKNİK ANALİZ</div>
     </div>
     <div class="rp-content" id="rpContent">
       <div style="padding:30px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--muted)">Hisse seçin</div>
@@ -998,151 +996,14 @@ function updateTechnicalPanel(prices, highs, lows, rsi, macd, stoch, willr, cci,
 }
 
 // ================================================================
-// RIGHT PANEL TABS
+// TEKNIK PANEL (auto-renders after chart load)
 // ================================================================
 let currentRpTab = 'teknik';
-let rpCache = {};  // { code: { fundamentals, news } }
-let lastIndicatorArgs = null; // to re-render teknik tab on switch
-
-function switchRpTab(tab) {
-  currentRpTab = tab;
-  ['teknik','temel','haberler'].forEach(t => {
-    document.getElementById('tab-'+t).classList.toggle('active', t===tab);
-  });
-  if (!currentCode) return;
-  if (tab === 'teknik') {
-    if (lastIndicatorArgs) updateTechnicalPanel(...lastIndicatorArgs);
-    else document.getElementById('rpContent').innerHTML = '<div style="padding:20px;font-family:var(--mono);font-size:11px;color:var(--muted)">Grafik yükleyin</div>';
-  } else if (tab === 'temel') {
-    renderTemelTab();
-  } else if (tab === 'haberler') {
-    renderHaberlerTab();
-  }
-}
+let lastIndicatorArgs = null;
 
 function loadFundamentals(code) {
-  // Show teknik by default
-  currentRpTab = 'teknik';
-  ['teknik','temel','haberler'].forEach(t => {
-    document.getElementById('tab-'+t).classList.toggle('active', t==='teknik');
-  });
+  // Nothing to load — teknik panel fills after calcIndicators
   document.getElementById('rpContent').innerHTML = '<div style="padding:30px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--muted)">GRAFİK YÜKLENİYOR...</div>';
-  // Fetch fundamentals+news in background (cache)
-  if (!rpCache[code]) {
-    fetch(`/api/fundamentals?ticker=${code}.IS`)
-      .then(r=>r.json())
-      .then(d => {
-        if (!rpCache[code]) rpCache[code] = {};
-        if (d.fundamentals) rpCache[code].fundamentals = d.fundamentals;
-      })
-      .catch(()=>{});
-  }
-}
-
-function renderTemelTab() {
-  const el = document.getElementById('rpContent');
-  const cache = rpCache[currentCode];
-  if (!cache || !cache.fundamentals) {
-    el.innerHTML = `<div class="ai-loading"><div class="ai-spinner"></div><div>VERİ YÜKLENİYOR...</div></div>`;
-    // Try fetching
-    fetch(`/api/fundamentals?ticker=${currentCode}.IS`)
-      .then(r=>r.json())
-      .then(d => {
-        if (!rpCache[currentCode]) rpCache[currentCode] = {};
-        rpCache[currentCode].fundamentals = d.fundamentals || {};
-        if (currentRpTab==='temel') renderTemelTab();
-      })
-      .catch(e => el.innerHTML=`<div style="padding:20px;font-family:var(--mono);font-size:11px;color:var(--muted)">Yüklenemedi: ${e.message}</div>`);
-    return;
-  }
-  const d = cache.fundamentals || {};
-  const row = (label, val, colorFn) => {
-    if (val == null) return '';
-    const col = colorFn ? colorFn(val) : 'var(--text)';
-    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(30,30,46,0.5)">
-      <span style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px">${label}</span>
-      <span style="font-family:var(--mono);font-size:11px;font-weight:500;color:${col}">${val}</span>
-    </div>`;
-  };
-  const fmtB = v => v==null?null:Math.abs(v)>=1e12?(v/1e12).toFixed(2)+'T TL':Math.abs(v)>=1e9?(v/1e9).toFixed(2)+'Mr TL':Math.abs(v)>=1e6?(v/1e6).toFixed(1)+'M TL':v.toFixed(0)+' TL';
-  const recMap = {buy:'AL',hold:'TUT',sell:'SAT',strongbuy:'GÜÇLÜ AL',strongsell:'GÜÇLÜ SAT'};
-  const recCol = {buy:'var(--up)',hold:'var(--yellow)',sell:'var(--down)',strongbuy:'var(--up)',strongsell:'var(--down)'};
-  const sec = (title) => `<div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:2px;margin:10px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border)">${title}</div>`;
-
-  el.innerHTML = `<div style="padding:10px 12px">
-    ${sec('DEĞERLEME')}
-    ${row('F/K',       d.pe!=null?d.pe+'x':null,         v=>parseFloat(v)<10?'var(--up)':parseFloat(v)>25?'var(--down)':'var(--yellow)')}
-    ${row('F/K (Fwd)', d.forwardPE!=null?d.forwardPE+'x':null)}
-    ${row('PD/DD',     d.pb!=null?d.pb+'x':null,          v=>parseFloat(v)<1.5?'var(--up)':parseFloat(v)>3?'var(--down)':'var(--text)')}
-    ${row('F/S',       d.ps!=null?d.ps+'x':null)}
-    ${row('EPS',       d.eps!=null?d.eps+' TL':null)}
-    ${row('Fwd EPS',   d.forwardEps!=null?d.forwardEps+' TL':null)}
-    ${row('Piy.Değeri',fmtB(d.marketCap))}
-    ${sec('KARLILIK')}
-    ${row('ROE',           d.roe!=null?'%'+d.roe:null,           v=>parseFloat(v)>20?'var(--up)':parseFloat(v)<5?'var(--down)':'var(--text)')}
-    ${row('ROA',           d.roa!=null?'%'+d.roa:null,           v=>parseFloat(v)>10?'var(--up)':'var(--text)')}
-    ${row('Brüt Marj',    d.grossMargin!=null?'%'+d.grossMargin:null,  v=>parseFloat(v)>30?'var(--up)':'var(--text)')}
-    ${row('Faaliyet Marj',d.operMargin!=null?'%'+d.operMargin:null,   v=>parseFloat(v)>15?'var(--up)':parseFloat(v)<0?'var(--down)':'var(--text)')}
-    ${row('Net Kar Marj', d.profitMargin!=null?'%'+d.profitMargin:null,v=>parseFloat(v)>10?'var(--up)':parseFloat(v)<0?'var(--down)':'var(--text)')}
-    ${sec('GELİR TABLOSU')}
-    ${row('Toplam Gelir',  fmtB(d.totalRevenue))}
-    ${row('Net Kar',       fmtB(d.netIncome), v=>v.includes('-')?'var(--down)':'var(--up)')}
-    ${row('Faaliyet Karı', fmtB(d.operatingIncome), v=>v.includes('-')?'var(--down)':'var(--up)')}
-    ${row('Gelir Büy.',    d.revenueGrowth!=null?'%'+d.revenueGrowth:null, v=>parseFloat(v)>0?'var(--up)':'var(--down)')}
-    ${row('Kar Büy.',      d.earningsGrowth!=null?'%'+d.earningsGrowth:null,v=>parseFloat(v)>0?'var(--up)':'var(--down)')}
-    ${sec('BİLANÇO')}
-    ${row('Borç/Özk.',    d.debtToEquity!=null?d.debtToEquity+'x':null, v=>parseFloat(v)<1?'var(--up)':parseFloat(v)>3?'var(--down)':'var(--yellow)')}
-    ${row('Cari Oran',    d.currentRatio!=null?d.currentRatio+'x':null,  v=>parseFloat(v)>2?'var(--up)':parseFloat(v)<1?'var(--down)':'var(--yellow)')}
-    ${row('Hızlı Oran',   d.quickRatio!=null?d.quickRatio+'x':null)}
-    ${row('Nakit',        fmtB(d.totalCash))}
-    ${row('Toplam Borç',  fmtB(d.totalDebt))}
-    ${row('Serbest NCF',  fmtB(d.freeCashflow), v=>v.includes('-')?'var(--down)':'var(--up)')}
-    ${d.dividendYield ? sec('TEMETTÜ') + row('Temettü Verimi','%'+d.dividendYield,v=>parseFloat(v)>5?'var(--up)':'var(--text)') + row('Temettü/Hisse',d.dividendRate!=null?d.dividendRate+' TL':null) + row('Dağıtım Oranı',d.payoutRatio!=null?'%'+d.payoutRatio:null) : ''}
-    ${sec('ANALİST')}
-    ${d.recommendation?`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(30,30,46,0.5)"><span style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px">TAVSİYE</span><span style="font-family:var(--mono);font-size:11px;font-weight:600;color:${recCol[d.recommendation]||'var(--text)'}">${recMap[d.recommendation]||d.recommendation.toUpperCase()} (${d.analystCount||'?'})</span></div>`:''}
-    ${row('Hedef Fiyat',  d.targetPrice!=null?d.targetPrice+' TL':null, _=>'var(--up)')}
-    ${row('Hedef Max',    d.targetHigh!=null?d.targetHigh+' TL':null)}
-    ${row('Hedef Min',    d.targetLow!=null?d.targetLow+' TL':null)}
-    ${sec('DİĞER')}
-    ${row('Beta',         d.beta!=null?d.beta:null)}
-    ${row('52H Yüksek',   d.week52High!=null?d.week52High+' TL':null)}
-    ${row('52H Düşük',    d.week52Low!=null?d.week52Low+' TL':null)}
-    ${d.sector?row('Sektör',d.sector):''}
-    ${d.industry?row('Sektör Kolu',d.industry):''}
-    ${d.employees?row('Çalışan',d.employees.toLocaleString('tr-TR')):''}
-  </div>`;
-}
-
-function renderHaberlerTab() {
-  const el = document.getElementById('rpContent');
-  // Check cache
-  if (rpCache[currentCode]?.news) {
-    _renderNews(rpCache[currentCode].news);
-    return;
-  }
-  el.innerHTML = `<div class="ai-loading"><div class="ai-spinner"></div><div>HABERLER YÜKLENİYOR...</div></div>`;
-  fetch(`/api/news?ticker=${currentCode}.IS`)
-    .then(r => r.json())
-    .then(d => {
-      const news = d.news || [];
-      if (!rpCache[currentCode]) rpCache[currentCode] = {};
-      rpCache[currentCode].news = news;
-      if (currentRpTab === 'haberler') _renderNews(news);
-    })
-    .catch(e => el.innerHTML=`<div style="padding:20px;font-family:var(--mono);font-size:11px;color:var(--muted)">Haberler yüklenemedi: ${e.message}</div>`);
-}
-
-function _renderNews(news) {
-  const el = document.getElementById('rpContent');
-  if (!news.length) {
-    el.innerHTML = `<div style="padding:20px;font-family:var(--mono);font-size:11px;color:var(--muted)">Haber bulunamadı</div>`;
-    return;
-  }
-  el.innerHTML = news.map(n => `
-    <div class="news-item" onclick="window.open('${n.link}','_blank')" style="cursor:pointer">
-      <div class="news-headline">${n.title}</div>
-      <div class="news-meta">${n.publisher} &nbsp;·&nbsp; ${n.time}</div>
-    </div>`).join('');
 }
 
 // ================================================================
