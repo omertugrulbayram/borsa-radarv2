@@ -367,27 +367,7 @@ body {
 .as-typing span:nth-child(3) { animation-delay:0.4s; }
 @keyframes typing-dot { 0%,60%,100%{opacity:0.2;transform:scale(1)} 30%{opacity:1;transform:scale(1.3)} }
 
-.as-input-row {
-  display:flex; gap:6px; padding:10px 12px;
-  border-top:1px solid var(--border); flex-shrink:0;
-  background:var(--bg2);
-}
-.as-input {
-  flex:1; background:var(--surface); border:1px solid var(--border);
-  color:var(--text); padding:6px 10px; border-radius:6px;
-  font-family:var(--sans); font-size:11px; outline:none;
-  transition:border-color 0.15s;
-}
-.as-input:focus { border-color:var(--blue); }
-.as-input::placeholder { color:var(--muted); }
-.as-send {
-  background:var(--blue); border:none; color:#fff;
-  padding:6px 12px; border-radius:6px; cursor:pointer;
-  font-family:var(--mono); font-size:11px; font-weight:600;
-  transition:opacity 0.15s;
-}
-.as-send:hover { opacity:0.85; }
-.as-send:disabled { opacity:0.4; cursor:default; }
+
 </style>
 </head>
 <body>
@@ -516,12 +496,8 @@ body {
   <div class="as-messages" id="asMessages">
     <div class="as-msg">
       <div class="as-msg-avatar">🤖</div>
-      <div class="as-bubble">Merhaba! Ben Radar Asistan. Sol taraftan bir hisse seç, sana teknik analizini sade bir dille anlatayım. Soru da sorabilirsin. 👋</div>
+      <div class="as-bubble">Sol taraftan bir hisse seçince sana teknik analizini anlatırım. 📊</div>
     </div>
-  </div>
-  <div class="as-input-row">
-    <input class="as-input" id="asInput" placeholder="Soru sor... (örn: THYAO alınır mı?)" onkeydown="if(event.key==='Enter')sendAsMsg()">
-    <button class="as-send" id="asSend" onclick="sendAsMsg()">GÖNDER</button>
   </div>
 </div>
 
@@ -1272,35 +1248,32 @@ function fmtVol(n) {
 // RADAR ASİSTAN
 // ================================================================
 let asistanOpen = false;
-let asistanBusy = false;
 let asistanContext = { code: null, name: null, indicators: null };
+let asistanBusy = false;
 
 function toggleAsistan() {
   asistanOpen = !asistanOpen;
   document.getElementById('asistanPanel').classList.toggle('open', asistanOpen);
+  if (asistanOpen && asistanContext.code && asistanContext.indicators && !asistanBusy) {
+    runAnalysis(asistanContext.code, asistanContext.name, asistanContext.indicators);
+  }
 }
 
-function asAddMsg(html, isUser = false) {
+function asAddMsg(html) {
   const box = document.getElementById('asMessages');
   const div = document.createElement('div');
   div.className = 'as-msg';
-  if (isUser) {
-    div.style.flexDirection = 'row-reverse';
-    div.innerHTML = `<div class="as-bubble user">${html}</div>`;
-  } else {
-    div.innerHTML = `<div class="as-msg-avatar">🤖</div><div class="as-bubble">${html}</div>`;
-  }
+  div.innerHTML = '<div class="as-msg-avatar">\u{1F916}</div><div class="as-bubble">' + html + '</div>';
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
-  return div;
 }
 
 function asShowTyping() {
+  if (document.getElementById('asTyping')) return;
   const box = document.getElementById('asMessages');
   const div = document.createElement('div');
-  div.className = 'as-msg';
-  div.id = 'asTyping';
-  div.innerHTML = `<div class="as-msg-avatar">🤖</div><div class="as-bubble"><div class="as-typing"><span></span><span></span><span></span></div></div>`;
+  div.className = 'as-msg'; div.id = 'asTyping';
+  div.innerHTML = '<div class="as-msg-avatar">\u{1F916}</div><div class="as-bubble"><div class="as-typing"><span></span><span></span><span></span></div></div>';
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
 }
@@ -1310,118 +1283,89 @@ function asRemoveTyping() {
   if (el) el.remove();
 }
 
-async function callClaude(systemPrompt, userMsg) {
-  const response = await fetch('/api/ai', {
+async function callClaude(system, userMsg) {
+  const r = await fetch('/api/ai', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userMsg }],
-      max_tokens: 400,
-    })
+    body: JSON.stringify({ system: system, messages: [{ role: 'user', content: userMsg }], max_tokens: 450 })
   });
-  const data = await response.json();
-  return data.content?.[0]?.text || 'Bir hata oluştu.';
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const data = await r.json();
+  if (data.error) throw new Error(JSON.stringify(data.error));
+  const txt = data.content && data.content[0] && data.content[0].text;
+  if (!txt) throw new Error('Bos yanit');
+  return txt;
 }
 
-// Hisse seçilince otomatik analiz
-async function asistanAnalyze(code, name, indicators) {
-  asistanContext = { code, name, indicators };
-  if (!asistanOpen) return; // sadece panel açıksa analiz başlat
-
-  const { rsi, macd, stoch, willr, score, signal, buyCount, sellCount, neutCount, last, ma20, ma50, boll } = indicators;
-
-  const systemPrompt = `Sen "Radar Asistan"sın — Türk borsasını takip eden, sade ve anlaşılır konuşan bir finans asistanısın. 
-Hiç borsa bilmeyen birine bile anlayacağı şekilde konuşursun. Teknik terimler kullanmak zorunda kalırsan hemen parantez içinde Türkçe açıklarsın. 
-Kesinlikle yatırım tavsiyesi vermediğini belirt ama "teknik görünüm" açısından yorumla. 
-Cevapların kısa ve net olsun (3-5 cümle). Emoji kullanabilirsin ama abartma.
-Önemli: HTML tag kullanma, düz metin yaz.`;
-
-  const userMsg = `${name} (${code}) hissesi için teknik analiz yap.
-Mevcut fiyat: ${last ? last.toFixed(2) + ' ₺' : 'bilinmiyor'}
-RSI: ${rsi ? rsi.toFixed(1) : '?'} — ${rsi < 30 ? 'aşırı satım bölgesi' : rsi > 70 ? 'aşırı alım bölgesi' : 'nötr bölge'}
-MACD: ${macd ? (macd > 0 ? 'pozitif (yükseliş sinyali)' : 'negatif (düşüş sinyali)') : '?'}
-Stokastik: ${stoch ? stoch.toFixed(1) : '?'}
-Williams %R: ${willr ? willr.toFixed(1) : '?'}
-MA20 üstünde mi: ${ma20 ? (last > ma20 ? 'evet' : 'hayır') : '?'}
-MA50 üstünde mi: ${ma50 ? (last > ma50 ? 'evet' : 'hayır') : '?'}
-Bollinger: ${boll ? (last > boll.upper ? 'üst bandın üstünde' : last < boll.lower ? 'alt bandın altında' : 'bantlar içinde') : '?'}
-Genel sinyal skoru: ${score}/100 → ${signal}
-(${buyCount} al, ${neutCount} nötr, ${sellCount} sat sinyali)
-
-Bunu hiç borsa bilmeyen birine 3-4 cümleyle anlat. Teknik görünüm iyi mi kötü mü, dikkat edilmesi gereken bir şey var mı?`;
-
-  asShowTyping();
-  try {
-    const reply = await callClaude(systemPrompt, userMsg);
-    asRemoveTyping();
-    // Format the reply — highlight AL/SAT keywords
-    const formatted = reply
-      .replace(/(AL|satın al|alınabilir|alım fırsatı)/gi, '<span class="tag-al">$1</span>')
-      .replace(/(SAT|sat[ıi]labilir|satış|satma)/gi, '<span class="tag-sat">$1</span>')
-      .replace(/(bekle|izle|temkinli|dikkatli)/gi, '<span class="tag-bekle">$1</span>');
-    asAddMsg(formatted);
-  } catch(e) {
-    asRemoveTyping();
-    asAddMsg('Analiz yapılırken bir sorun oluştu. Tekrar dene.');
-  }
+function fmtReply(text) {
+  return text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br>')
+    .replace(/\b(al|alim firsati|alinabilir)\b/gi, '<span class="tag-al">$1</span>')
+    .replace(/\b(sat|satis sinyali)\b/gi, '<span class="tag-sat">$1</span>')
+    .replace(/\b(bekle|izle|temkinli|dikkatli)\b/gi, '<span class="tag-bekle">$1</span>');
 }
 
-async function sendAsMsg() {
+async function runAnalysis(code, name, ind) {
   if (asistanBusy) return;
-  const input = document.getElementById('asInput');
-  const msg = input.value.trim();
-  if (!msg) return;
-
-  input.value = '';
-  asAddMsg(msg, true);
   asistanBusy = true;
-  document.getElementById('asSend').disabled = true;
 
-  const { code, name, indicators } = asistanContext;
-
-  const systemPrompt = `Sen "Radar Asistan"sın — Türk borsasını takip eden, sade ve anlaşılır konuşan bir finans asistanısın.
-Hiç borsa bilmeyen birine bile anlayacağı şekilde konuşursun. Teknik terimler kullanmak zorunda kalırsan parantez içinde açıklarsın.
-Kesinlikle resmi yatırım tavsiyesi vermediğini belirtebilirsin ama teknik ve genel görüşünü paylaşabilirsin.
-Cevapların kısa ve net olsun (2-4 cümle). Emoji kullanabilirsin ama abartma.
-Önemli: HTML tag kullanma, düz metin yaz.`;
-
-  const context = code && indicators ? `Şu an ${name} (${code}) hissesi inceleniyor. Fiyat: ${indicators.last?.toFixed(2)} ₺, Sinyal: ${indicators.signal} (${indicators.score}/100).` : '';
-
+  // Paneli temizle, başlık ekle
+  const box = document.getElementById('asMessages');
+  box.innerHTML = '';
+  const hdr = document.createElement('div');
+  hdr.style.cssText = 'text-align:center;padding:8px 0 4px;font-family:var(--mono);font-size:10px;color:var(--blue);letter-spacing:1px;font-weight:600';
+  hdr.textContent = code + ' — ' + name;
+  box.appendChild(hdr);
   asShowTyping();
+
+  const score = ind.score || 50;
+  const signal = ind.signal || 'NÖTR';
+  const buyCount = ind.buyCount || 0;
+  const neutCount = ind.neutCount || 0;
+  const sellCount = ind.sellCount || 0;
+  const last = ind.last;
+  const rsi = ind.rsi;
+  const macd = ind.macd;
+  const stoch = ind.stoch;
+  const ma20 = ind.ma20;
+  const ma50 = ind.ma50;
+  const boll = ind.boll;
+
+  const sinyal = signal === 'GÜÇLÜ AL' ? 'çok güçlü alım sinyali' : signal === 'AL' ? 'alım sinyali' : signal === 'GÜÇLÜ SAT' ? 'çok güçlü satış sinyali' : signal === 'SAT' ? 'satış sinyali' : 'nötr sinyal';
+  const rsiTxt = rsi == null ? '' : 'RSI: ' + rsi.toFixed(1) + (rsi < 30 ? ' (dipte, aşırı satılmış)' : rsi > 70 ? ' (tepede, aşırı alınmış)' : ' (normal bölge)') + '. ';
+  const macdTxt = macd == null ? '' : 'MACD ' + (macd > 0 ? 'pozitif (momentum yukarı)' : 'negatif (momentum aşağı)') + '. ';
+  const stochTxt = stoch == null ? '' : 'Stokastik: ' + stoch.toFixed(1) + (stoch < 20 ? ' (aşırı satılmış)' : stoch > 80 ? ' (aşırı alınmış)' : '') + '. ';
+  const trendTxt = (ma20 && ma50 && last) ? (last > ma20 && last > ma50 ? 'Kısa ve orta vadeli trendler yukarı. ' : last < ma20 && last < ma50 ? 'Kısa ve orta vadeli trendler aşağı. ' : 'Trendler karışık. ') : '';
+  const bollTxt = (boll && last) ? (last > boll.upper ? 'Üst Bollinger bandının üstünde (aşırı alım). ' : last < boll.lower ? 'Alt Bollinger bandının altında (aşırı satım). ' : 'Bollinger bantları içinde. ') : '';
+
+  const system = 'Sen Radar Asistansin. Borsa bilmeyen birine teknik analizi cok sade, gunluk dilde anlatirsin. Teknik terim kullanmak zorunda kalirsan parantez icinde aciklarsın. Kesin "al" veya "sat" deme ama teknik gorunum olumlu/olumsuz diye yorum yap. 4-6 cumle yaz. Sadece duz metin, HTML tag kullanma.';
+
+  const userMsg = name + ' (' + code + ') icin teknik analiz yap. '
+    + 'Fiyat: ' + (last ? last.toFixed(2) + ' TL' : 'bilinmiyor') + '. '
+    + 'Genel sinyal skoru: ' + score + '/100, ' + sinyal + ' (' + buyCount + ' al / ' + neutCount + ' nötr / ' + sellCount + ' sat). '
+    + rsiTxt + macdTxt + stochTxt + trendTxt + bollTxt
+    + 'Bunu borsa bilmeyen birine anlasilir Turkcesiyle anlat ve ne yapmak mantikli olabilir diye yorum yap, ama kesin tavsiye verme.';
+
   try {
-    const reply = await callClaude(systemPrompt, context + '\nKullanıcı sorusu: ' + msg);
+    const reply = await callClaude(system, userMsg);
     asRemoveTyping();
-    const formatted = reply
-      .replace(/(AL|satın al|alınabilir|alım fırsatı)/gi, '<span class="tag-al">$1</span>')
-      .replace(/(SAT|sat[ıi]labilir|satış|satma)/gi, '<span class="tag-sat">$1</span>')
-      .replace(/(bekle|izle|temkinli|dikkatli)/gi, '<span class="tag-bekle">$1</span>');
-    asAddMsg(formatted);
+    asAddMsg(fmtReply(reply));
   } catch(e) {
     asRemoveTyping();
-    asAddMsg('Bir sorun oluştu, tekrar dene.');
+    asAddMsg('Analiz yapilamadi: ' + e.message + '. Hisseye tekrar tikla.');
   } finally {
     asistanBusy = false;
-    document.getElementById('asSend').disabled = false;
   }
 }
 
-// Hisse seçilince asistan'ı bilgilendir
 function notifyAsistan(code, name, indicators) {
-  asistanContext = { code, name, indicators };
-  // Auto-analyze sadece panel açıksa veya 3 saniye içinde açılırsa
-  if (asistanOpen) {
-    // Clear previous stock messages, add new analysis
-    const box = document.getElementById('asMessages');
-    // Add separator
-    const sep = document.createElement('div');
-    sep.style.cssText = 'text-align:center;font-family:var(--mono);font-size:9px;color:var(--muted);padding:6px 0;letter-spacing:1px';
-    sep.textContent = `── ${code} ANALİZİ ──`;
-    box.appendChild(sep);
-    asistanAnalyze(code, name, indicators);
-  }
+  asistanContext = { code: code, name: name, indicators: indicators };
+  // Paneli otomatik aç
+  asistanOpen = true;
+  document.getElementById('asistanPanel').classList.add('open');
+  runAnalysis(code, name, indicators);
 }
-
 // ================================================================
 // INIT
 // ================================================================
